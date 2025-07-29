@@ -26,26 +26,32 @@
 - **设备自动检测**: 智能选择CUDA、MPS或CPU后端
 - **性能优化**: 针对不同设备的特定优化策略
 
+#### 5. `dependency-strategy.mdc`
+- **第三方依赖策略**: 智能选择成熟的数值计算库而非重复造轮子
+- **ODE求解器集成**: 优先使用torchdiffeq等专业库
+- **最优传输**: 按需集成POT库用于OT-Flow算法
+- **依赖管理**: 版本控制、兼容性测试、包装器设计模式
+
 ### 📋 Conditional Apply (按需应用的规则)
 
 这些规则在特定开发阶段或特定文件类型时应用：
 
-#### 5. `algorithm-implementation.mdc`
+#### 6. `algorithm-implementation.mdc`
 - **应用时机**: 实现具体Flow Matching算法时
 - **内容**: 统一接口、数学正确性、数值稳定性要求
 - **验证标准**: 算法特定的测试和验证要求
 
-#### 6. `testing-coverage.mdc`
+#### 7. `testing-coverage.mdc`
 - **应用时机**: 编写测试代码或审查测试覆盖率时
 - **内容**: 测试框架、覆盖率要求、测试类型和组织
 - **工具配置**: pytest配置、CI/CD集成
 
-#### 7. `documentation-standards.mdc`
+#### 8. `documentation-standards.mdc`
 - **应用时机**: 编写文档、README或代码注释时
 - **内容**: Docstring规范、数学公式表示、项目级文档
 - **文档类型**: API文档、教程、版本日志
 
-#### 8. `ref-repo.mdc`
+#### 9. `ref-repo.mdc`
 - **应用时机**: 需要参考项目结构或查阅理论文档时
 - **内容**: ProtRepr项目参考、Flow Matching理论文档
 - **技术栈指引**: 推荐工具和不参考的方面

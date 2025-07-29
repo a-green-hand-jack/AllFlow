@@ -1,0 +1,258 @@
+---
+name: AllFlow第三方依赖和库集成策略
+description: 定义AllFlow项目的第三方依赖选择原则、集成策略和管理最佳实践，确保专注核心竞争力
+globs: ["src/**/*.py"]
+alwaysApply: true
+---
+
+# AllFlow 第三方依赖和库集成策略
+
+## 核心原则
+
+### 🎯 专注核心竞争力
+AllFlow的价值在于**Flow Matching算法的数学核心**，而非重复造轮子。我们应该：
+- **专注实现**: Flow Matching变体的核心算法逻辑
+- **依赖成熟库**: 对于非核心但必需的功能组件
+- **避免重复开发**: 已有优秀实现的通用工具
+
+### ⚖️ 智能依赖选择
+选择第三方库时必须平衡：
+- **功能完整性** vs **依赖轻量化**
+- **性能优势** vs **集成复杂度**
+- **社区活跃度** vs **版本稳定性**
+
+## 依赖分类策略
+
+### 🔧 核心依赖 (Core Dependencies)
+**原则**: 最小化，只包含绝对必需且稳定的库
+
+#### 必要核心依赖
+- **PyTorch**: 张量操作和自动微分（项目基础）
+- **typing-extensions**: 类型注解支持（代码质量）
+
+#### 不包含的"伪核心"
+- ❌ NumPy: PyTorch已提供足够的数值计算能力
+- ❌ SciPy: 避免生态系统分裂，PyTorch优先
+
+### 🧮 数值计算依赖 (Numerical Dependencies)
+**原则**: 使用专业、高性能的数值库
+
+#### ODE求解器
+优先级排序的选择：
+
+1. **torchdiffeq** (推荐首选)
+   - 项目: https://github.com/rtqichen/torchdiffeq
+   - 优势: PyTorch生态原生，性能优化，广泛使用
+   - 提供: Euler, Heun, RK4, 自适应求解器
+   - 状态: 活跃维护，成熟稳定
+
+2. **torchsde** (SDE需求)
+   - 项目: https://github.com/google-research/torchsde
+   - 优势: Google Research维护，支持随机微分方程
+   - 适用: 如果需要噪声扩散过程
+
+3. **torchdyn** (神经ODE)
+   - 项目: https://github.com/DiffEqML/torchdyn
+   - 优势: 专注神经微分方程，现代化设计
+   - 考虑: 如果需要更高级的神经ODE功能
+
+#### 最优传输依赖
+根据具体算法需求选择：
+
+1. **POT (Python Optimal Transport)** (OT-Flow专用)
+   - 项目: https://github.com/PythonOT/POT
+   - 优势: 最全面的OT算法库，性能优化
+   - 适用: OT-Flow算法实现
+   - 状态: 活跃维护，2.6k stars
+
+2. **geomloss** (几何损失)
+   - 项目: https://github.com/jeanfeydy/geomloss
+   - 优势: 高性能Wasserstein距离计算
+   - 适用: 损失函数计算优化
+
+### 📚 可选依赖 (Optional Dependencies)
+**原则**: 增强功能，不影响核心算法
+
+#### 开发工具依赖
+```toml
+[project.optional-dependencies]
+dev = [
+    "black>=24.0.0",
+    "isort>=5.12.0", 
+    "ruff>=0.1.0",
+    "mypy>=1.7.0"
+]
+
+test = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-benchmark>=4.0.0",
+    "hypothesis>=6.88.0"
+]
+
+ot = [
+    "pot>=0.9.0"  # 仅OT-Flow需要
+]
+
+examples = [
+    "matplotlib>=3.7.0",
+    "jupyter>=1.0.0"
+]
+```
+
+## 具体集成策略
+
+### 🔄 ODE求解器集成
+**决策**: 使用torchdiffeq而非自实现
+
+```python
+# ✅ 推荐方式
+from torchdiffeq import odeint
+
+def sample_trajectory(self, x0: torch.Tensor, t_span: torch.Tensor) -> torch.Tensor:
+    """使用专业ODE求解器进行轨迹采样"""
+    def vector_field(t, x):
+        return self.compute_vector_field(x, t)
+    
+    return odeint(vector_field, x0, t_span, method='euler')
+
+# ❌ 避免的方式 - 自实现Euler求解器
+def euler_step(x, dt, vector_field):
+    return x + dt * vector_field(x)
+```
+
+**原因**:
+- **数值稳定性**: 专业库已解决边界条件、步长控制等问题
+- **性能优化**: C++后端和GPU优化
+- **算法多样性**: Euler, Heun, RK4, 自适应方法
+- **维护成本**: 避免自维护数值算法的复杂性
+
+### 🎯 最优传输集成 (按需)
+**决策**: 仅在OT-Flow算法中依赖POT
+
+```python
+# 条件导入模式
+try:
+    import ot
+    HAS_POT = True
+except ImportError:
+    HAS_POT = False
+
+class OTFlowMatching(FlowMatchingBase):
+    def __init__(self, *args, **kwargs):
+        if not HAS_POT:
+            raise ImportError(
+                "OT-Flow requires 'pot' library. "
+                "Install with: pip install allflow[ot]"
+            )
+        super().__init__(*args, **kwargs)
+```
+
+### 📦 包装器设计模式
+**原则**: 为第三方库创建统一的内部接口
+
+```python
+# src/allflow/solvers/base.py
+from abc import ABC, abstractmethod
+
+class ODESolverBase(ABC):
+    """ODE求解器的统一接口"""
+    
+    @abstractmethod
+    def solve(self, vector_field: Callable, x0: torch.Tensor, 
+              t_span: torch.Tensor) -> torch.Tensor:
+        pass
+
+# src/allflow/solvers/torchdiffeq.py  
+from torchdiffeq import odeint
+from .base import ODESolverBase
+
+class TorchDiffEqSolver(ODESolverBase):
+    """torchdiffeq库的包装器"""
+    
+    def __init__(self, method: str = 'euler'):
+        self.method = method
+    
+    def solve(self, vector_field: Callable, x0: torch.Tensor, 
+              t_span: torch.Tensor) -> torch.Tensor:
+        return odeint(vector_field, x0, t_span, method=self.method)
+```
+
+## 依赖管理最佳实践
+
+### 📋 版本锁定策略
+```toml
+# pyproject.toml - 指定兼容版本范围
+dependencies = [
+    "torch>=2.0.0,<3.0.0",
+    "torchdiffeq>=0.2.0,<1.0.0",
+    "typing-extensions>=4.0.0"
+]
+```
+
+### 🔍 兼容性测试
+```python
+# 在__init__.py中检查关键依赖
+def _check_torchdiffeq():
+    try:
+        import torchdiffeq
+        return True
+    except ImportError:
+        logging.warning(
+            "torchdiffeq not found. Some solver features will be unavailable. "
+            "Install with: pip install torchdiffeq"
+        )
+        return False
+```
+
+### 📚 文档化依赖选择
+每个重要依赖都应该有明确的：
+- **选择理由**: 为什么选择这个库
+- **替代方案**: 考虑过哪些其他选项
+- **版本要求**: 最低版本和兼容性说明
+- **功能边界**: 这个依赖负责什么功能
+
+## 禁止事项
+
+### ❌ 过度依赖
+- 不要为简单功能引入重型库
+- 避免功能重叠的多个依赖
+- 禁止未经评估的依赖添加
+
+### ❌ 自造轮子
+- 不要重复实现已有的高质量数值算法
+- 避免实现通用的张量操作工具
+- 禁止重复开发成熟的优化算法
+
+### ❌ 依赖锁定
+- 不要过度依赖特定库的内部API
+- 避免不可替换的深度集成
+- 保持核心算法的可移植性
+
+## 决策记录模板
+
+每次添加新依赖时，必须记录：
+
+```markdown
+### 依赖决策: [库名称]
+
+**需求**: 描述需要解决的问题
+**候选方案**: 列出考虑的替代方案
+**选择**: 最终选择的库和版本
+**原因**: 
+- 功能适配度: X/10
+- 性能表现: X/10  
+- 社区活跃度: X/10
+- 维护成本: X/10
+
+**影响**: 对项目的影响分析
+**退出策略**: 如果需要更换的计划
+```
+
+## 重要提醒
+
+这个策略的核心是**让AllFlow专注于自己的核心价值**：
+- ✅ **做好一件事**: Flow Matching算法的高效实现
+- ✅ **站在巨人肩膀上**: 使用最佳的现有工具
+- ✅ **保持灵活性**: 可替换的依赖集成方式
+- ❌ **避免重复造轮子**: 不在非核心功能上浪费时间
