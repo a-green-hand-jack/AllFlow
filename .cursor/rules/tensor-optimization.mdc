@@ -1,0 +1,79 @@
+---
+alwaysApply: true
+---
+
+# 张量操作优化要求
+
+## 核心优化原则
+AllFlow的所有实现必须优先使用PyTorch内置张量操作，避免Python循环，追求最高计算效率。
+
+## 强制要求
+
+### 🚫 绝对禁止的操作
+- **Python循环遍历张量**：严禁使用 `for` 循环逐个处理张量元素
+- **逐个样本处理**：不允许 `for sample in batch` 这样的操作
+- **NumPy转换循环**：禁止为了使用循环而转换到NumPy
+
+### ✅ 推荐的高效操作
+
+#### 批量操作
+```python
+# ✅ 正确：使用广播和向量化操作
+result = torch.einsum('bi,bj->bij', x, y)  # 批量外积
+result = torch.bmm(x.unsqueeze(-1), y.unsqueeze(1))  # 批量矩阵乘法
+
+# ❌ 错误：循环处理
+result = torch.stack([torch.outer(x[i], y[i]) for i in range(len(x))])
+```
+
+#### 高级索引和掩码
+```python
+# ✅ 正确：使用布尔掩码
+valid_mask = (x > threshold)
+result = torch.where(valid_mask, x, torch.zeros_like(x))
+
+# ❌ 错误：条件循环
+result = torch.zeros_like(x)
+for i in range(len(x)):
+    if x[i] > threshold:
+        result[i] = x[i]
+```
+
+#### 维度操作
+```python
+# ✅ 正确：使用einsum进行复杂的维度重排
+result = torch.einsum('bijk,bjkl->bil', tensor1, tensor2)
+
+# ✅ 正确：使用view和expand进行形状变换
+x_expanded = x.unsqueeze(1).expand(-1, n, -1)
+```
+
+## 性能优化策略
+
+### 内存效率
+- **原地操作**：适当使用 `+=`, `*=` 等原地操作符减少内存分配
+- **视图操作**：优先使用 `view()`, `reshape()` 而非 `clone()`
+- **梯度检查点**：对于大型计算图使用 `torch.utils.checkpoint`
+
+### 计算效率
+- **Einsum优先**：对于复杂的张量运算优先考虑 `torch.einsum`
+- **BLAS操作**：充分利用 `torch.mm`, `torch.bmm`, `torch.matmul` 等高效线性代数操作
+- **函数式操作**：使用 `torch.functional` 中的函数式接口
+
+### GPU优化
+- **连续内存**：确保张量在GPU上是连续的 `.contiguous()`
+- **数据类型**：合理选择 `float32` vs `float16` 平衡精度和速度
+- **批量大小**：根据GPU内存优化批量大小
+
+## 代码审查检查点
+每次实现算法时，必须验证：
+
+1. **零Python循环**：代码中不包含对张量的Python循环
+2. **批量兼容**：所有操作都支持任意批量大小
+3. **维度广播**：正确使用PyTorch的广播机制
+4. **内存效率**：避免不必要的张量复制和临时变量
+
+## 性能测试要求
+- 所有新实现的算法都必须包含性能基准测试
+- 对比优化前后的执行时间和内存使用
+- 提供不同批量大小下的性能特征分析

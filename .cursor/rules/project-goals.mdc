@@ -1,0 +1,43 @@
+---
+alwaysApply: true
+---
+
+# AllFlow 项目核心目标与定位
+
+## 项目使命
+AllFlow 是一个专注于Flow Matching核心算法实现的PyTorch库。项目的核心使命是：
+
+1. **算法纯度**：实现Flow Matching各种变体的纯算法核心，与具体神经网络架构和数据类型完全解耦
+2. **计算效率**：所有实现必须优先使用PyTorch内置张量操作，避免Python循环，追求最高计算效率
+3. **科学严谨**：每个算法实现都要有扎实的理论基础，确保数学正确性和数值稳定性
+
+## 核心原则
+
+### 🎯 专注度原则
+- 只关注Flow Matching算法的数学核心，不实现神经网络架构
+- 不关心具体数据类型或应用领域
+- 提供通用的、可复用的算法组件
+
+### ⚡ 性能原则
+- 所有张量操作必须是批量化的
+- 优先使用PyTorch的native operations
+- 支持GPU加速和分布式计算
+- 内存效率优化是核心考量
+
+### 📐 科学原则
+- 每个算法都有清晰的数学描述
+- 实现必须与论文中的公式一致
+- 提供理论验证和数值验证工具
+
+## 目标算法覆盖
+- Flow Matching (基础版本)
+- Mean Flow 
+- Conditional Flow Matching (CFM)
+- RectifiedFlow
+- Optimal Transport Flow (OT-Flow)
+
+## 非目标（明确不做的事）
+- 不实现具体的神经网络模型
+- 不提供预训练模型或checkpoint
+- 不关心特定的数据预处理
+- 不提供端到端的训练pipeline

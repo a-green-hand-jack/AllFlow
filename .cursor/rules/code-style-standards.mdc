@@ -1,0 +1,52 @@
+---
+alwaysApply: true
+---
+
+# AllFlow 代码风格与质量标准
+
+## 类型注解要求
+- **强制要求**：所有函数和方法的参数及返回值都必须有明确的类型注解
+- **精确注解**：使用 `typing` 模块提供精确的类型信息
+- **张量注解**：对于复杂的数据结构如 `torch.Tensor`，必须在注释中说明shape信息
+  ```python
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+      """前向传播
+      
+      Args:
+          x: 输入张量, shape: (batch_size, channels, height, width)
+          
+      Returns:
+          输出张量, shape: (batch_size, num_classes)
+      """
+  ```
+
+## 日志系统规范
+- **严禁print**：绝对禁止在库代码中使用 `print()` 进行调试或信息输出
+- **全面使用logging**：必须使用Python内置的 `logging` 模块
+- **日志级别**：
+  - `logging.DEBUG`: 开发调试信息
+  - `logging.INFO`: 程序运行的关键节点
+  - `logging.WARNING`: 警示潜在问题
+  - `logging.ERROR` 和 `logging.CRITICAL`: 错误和严重故障
+
+## 路径管理
+- **统一使用pathlib**：所有文件系统路径操作必须使用 `from pathlib import Path`
+- **跨平台兼容**：使用面向对象的方式进行路径拼接、读写和查询
+
+## 错误处理
+- **精准捕获**：使用具体的异常类型，严禁使用宽泛的 `except Exception:`
+- **主动抛出**：在适当情况下主动抛出具有明确意义的异常
+
+## 代码风格
+- **严格遵循PEP 8**：特别注意命名规范（函数和变量用snake_case，类用PascalCase）
+- **模块化设计**：遵循单一职责原则，每个函数/类只做一件事情
+- **Google风格Docstrings**：所有公开的模块、函数、类和方法都必须包含完整的文档字符串
+
+## 模块结构要求
+- **src布局**：采用 `src/allflow/` 的包结构
+- **分层清晰**：
+  - `core/` - 核心抽象和基类
+  - `algorithms/` - 具体算法实现
+  - `solvers/` - ODE积分器
+  - `utils/` - 工具函数
+- **导入规范**：在 `__init__.py` 中明确导出公共API

@@ -1,0 +1,100 @@
+---
+alwaysApply: false
+---
+
+# 参考项目与文档资源
+
+## 项目结构参考
+**ProtRepr项目**: https://github.com/a-green-hand-jack/ProtRepr
+- 标准的src布局项目结构
+- pyproject.toml配置规范
+- pytest测试组织方式
+- Google风格的代码文档
+- uv + hatch 工具链使用
+
+## Flow Matching算法参考项目
+
+### 核心实现参考项目
+
+#### TorchCFM (atong01/conditional-flow-matching)
+- **链接**: https://github.com/atong01/conditional-flow-matching
+- **特色**: 最权威的CFM实现库，支持多种CFM变体
+- **参考价值**:
+  - 完整的CFM算法实现（ExactOptimalTransportConditionalFlowMatcher等）
+  - 项目结构设计（torchcfm包结构）
+  - 测试组织方式和性能基准
+  - PyTorch Lightning集成模式
+
+#### Meta Flow Matching (facebookresearch/flow_matching)  
+- **链接**: https://github.com/facebookresearch/flow_matching
+- **特色**: Meta官方Flow Matching框架，工业级实现
+- **参考价值**:
+  - 高性能solver实现
+  - 多种概率路径设计
+  - 分布式训练支持
+
+#### MeanFlow (haidog-yaqub/MeanFlow)
+- **链接**: https://github.com/haidog-yaqub/MeanFlow
+- **特色**: Mean Flow算法的原创实现
+- **参考价值**:
+  - Mean Flow的数学实现细节
+  - 期望计算的优化策略
+
+#### RectifiedFlow 实现
+- **[lucidrains/rectified-flow-pytorch](https://github.com/lucidrains/rectified-flow-pytorch)**: 简洁的RectifiedFlow实现
+- **[TongTong313/rectified-flow](https://github.com/TongTong313/rectified-flow)**: 完整的RectifiedFlow框架
+- **参考价值**:
+  - 流线矫正的迭代实现
+  - 直线化程度评估方法
+
+### 理论与算法文档
+- **Cond-Flow-Matching**: 条件流匹配的理论基础和实现细节
+- **FaceBookFlowMatching**: Meta Flow Matching框架的架构和API设计
+- **MeanFlow**: 期望流的数学原理和算法实现
+- **RectifiedFlow**: 流线矫正和迭代优化方法
+- **Score-SDE**: 分数匹配和随机微分方程的理论背景
+
+## 技术栈参考
+- **PyTorch**: 核心张量计算框架
+- **typing-extensions**: 高级类型注解
+- **pytest + pytest-cov**: 测试和覆盖率工具
+- **pathlib**: 现代路径管理
+- **logging**: 标准日志系统
+
+## 参考指导原则
+
+### 从参考项目中学习什么
+- **算法核心实现**: 关注数学公式的PyTorch实现方式
+- **张量操作优化**: 学习高效的批量处理和GPU优化技巧
+- **接口设计**: 参考统一且简洁的API设计原则
+- **测试策略**: 学习数值验证和性能测试的方法
+- **模块化架构**: 参考清晰的代码组织和分层设计
+
+### AllFlow项目的差异化定位
+- **纯算法专注**: 只实现Flow Matching的数学核心，不包含神经网络
+- **极致性能**: 比参考项目更激进的张量优化要求
+- **统一抽象**: 为所有Flow Matching变体提供统一的基类接口
+- **轻量级**: 最小化依赖，专注核心计算组件
+
+## 不参考的方面
+- **命令行工具**: 所有项目的CLI部分都不参考（AllFlow不需要CLI）
+- **神经网络架构**: UNet、ResNet等具体网络实现不参考
+- **特定领域应用**: 图像生成、文本处理等应用层代码不参考
+- **训练Pipeline**: 完整的训练循环、优化器选择等不参考
+- **可视化工具**: 绘图和结果展示相关代码不参考
+
+## 使用建议
+
+### 开发前期参考
+1. **TorchCFM项目结构**: 学习包组织和模块划分
+2. **Meta Flow Matching**: 参考高性能实现思路
+3. **各算法原始实现**: 理解具体数学细节
+
+### 开发中期对比
+1. **接口设计一致性**: 确保我们的API设计合理
+2. **性能基准对比**: 验证我们的优化效果
+3. **数值精度验证**: 确保算法实现的正确性
+
+### 开发后期参考
+1. **测试覆盖对比**: 确保测试的完整性
+2. **文档质量参考**: 学习优秀的技术文档写作

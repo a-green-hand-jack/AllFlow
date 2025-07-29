@@ -1,0 +1,166 @@
+---
+alwaysApply: false
+---
+
+# 测试标准与覆盖率要求
+
+## 测试框架和工具
+
+### 核心工具链
+- **pytest**: 主要测试框架
+- **pytest-cov**: 覆盖率测试插件
+- **torch.testing**: PyTorch张量测试工具
+- **pytest-benchmark**: 性能基准测试
+
+### 测试执行命令
+```bash
+# 运行所有测试
+pytest
+
+# 运行测试并生成覆盖率报告
+pytest --cov=src/allflow --cov-report=html
+
+# 查看HTML覆盖率报告
+open htmlcov/index.html
+```
+
+## 覆盖率要求
+
+### 最低覆盖率标准
+- **核心算法模块**: ≥95% 行覆盖率
+- **工具函数**: ≥90% 行覆盖率
+- **总体项目**: ≥85% 行覆盖率
+
+### 覆盖率豁免
+以下情况可以豁免覆盖率要求：
+- 调试代码（用 `# pragma: no cover` 标记）
+- 不可达的错误处理分支
+- 抽象基类的抽象方法
+
+## 测试类型和要求
+
+### 单元测试
+每个算法类都必须包含：
+
+#### 数学正确性测试
+```python
+def test_boundary_conditions():
+    """测试t=0和t=1时的边界条件"""
+    
+def test_interpolation_consistency():
+    """测试插值路径的一致性"""
+    
+def test_vector_field_properties():
+    """测试速度场的数学性质"""
+```
+
+#### 数值稳定性测试
+```python
+def test_gradient_computation():
+    """使用gradcheck验证梯度计算"""
+    
+def test_numerical_stability():
+    """测试极端数值情况下的稳定性"""
+    
+def test_device_compatibility():
+    """测试CPU/GPU设备兼容性"""
+```
+
+#### 性能测试
+```python
+def test_batch_processing():
+    """测试批量处理的正确性和效率"""
+    
+def test_memory_efficiency():
+    """测试内存使用效率"""
+    
+@pytest.mark.benchmark
+def test_performance_benchmark():
+    """性能基准测试"""
+```
+
+### 集成测试
+- **算法间一致性**: 不同算法在相同条件下的结果对比
+- **端到端流程**: 从初始分布到目标分布的完整流程
+- **数值收敛性**: ODE求解器的收敛性验证
+
+### 属性测试 (Property-based Testing)
+使用 `hypothesis` 库进行属性测试：
+
+```python
+from hypothesis import given, strategies as st
+
+@given(st.floats(min_value=0, max_value=1))
+def test_time_interpolation_property(t):
+    """测试时间插值的数学性质"""
+    # 实现属性测试逻辑
+```
+
+## 测试组织结构
+
+### 目录结构
+```
+tests/
+├── __init__.py
+├── conftest.py                 # pytest配置和fixtures
+├── unit/                       # 单元测试
+│   ├── test_flow_matching.py
+│   ├── test_mean_flow.py
+│   └── test_rectified_flow.py
+├── integration/                # 集成测试
+│   ├── test_solver_integration.py
+│   └── test_algorithm_consistency.py
+├── benchmark/                  # 性能测试
+│   ├── test_performance.py
+│   └── test_memory_usage.py
+└── fixtures/                   # 测试数据和工具
+    ├── sample_data.py
+    └── test_utils.py
+```
+
+### 测试数据管理
+- **确定性测试**: 使用固定随机种子确保可重现性
+- **临时文件**: 测试后自动清理临时文件
+- **内存管理**: 大型测试数据在测试后及时释放
+
+## 测试配置
+
+### pytest.ini 配置
+```ini
+[tool:pytest]
+testpaths = tests
+addopts = 
+    --strict-markers
+    --disable-warnings
+    --cov=src/allflow
+    --cov-report=term-missing
+    --cov-report=html
+    --cov-fail-under=85
+
+markers =
+    slow: marks tests as slow
+    gpu: marks tests that require GPU
+    benchmark: marks performance benchmark tests
+```
+
+### CI/CD 集成
+- 每次提交都自动运行完整测试套件
+- 覆盖率报告自动生成和上传
+- 性能回归检测
+
+## 测试最佳实践
+
+### 测试命名规范
+- 测试函数命名: `test_<功能描述>`
+- 测试类命名: `Test<ClassName>`
+- 参数化测试: 使用描述性的参数名
+
+### 错误场景测试
+- **输入验证**: 测试无效输入的错误处理
+- **边界条件**: 测试极值和边界情况
+- **异常处理**: 验证异常的正确抛出和处理
+
+### 测试独立性
+- 每个测试都应该能独立运行
+- 不依赖其他测试的状态或结果
+- 使用适当的setup和teardown

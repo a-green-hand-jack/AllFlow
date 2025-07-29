@@ -1,0 +1,94 @@
+---
+alwaysApply: false
+---
+
+# Flow Matching算法实现规范
+
+## 算法实现的统一接口
+
+### 基类设计要求
+所有Flow Matching算法都必须继承统一的基类，实现以下核心方法：
+
+```python
+class FlowMatchingBase:
+    def compute_vector_field(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """计算时间t处的速度场"""
+        pass
+    
+    def sample_trajectory(self, x_0: torch.Tensor, x_1: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """根据插值路径采样轨迹点"""
+        pass
+    
+    def compute_loss(self, x_0: torch.Tensor, x_1: torch.Tensor) -> torch.Tensor:
+        """计算训练损失"""
+        pass
+```
+
+### 数学正确性要求
+
+#### 时间参数化
+- 时间参数 `t` 必须在 [0, 1] 区间内
+- `t=0` 对应源分布，`t=1` 对应目标分布
+- 所有算法必须支持任意时间点的插值
+
+#### 轨迹插值
+- 实现标准的线性插值：`x_t = (1-t)*x_0 + t*x_1`
+- 支持条件路径：`x_t = (1-t)*x_0 + t*x_1 + σ(t)*ε`
+- 确保边界条件正确性
+
+#### 速度场计算
+- Flow Matching: `u_t(x) = (x_1 - x_0) / (1 - σ_min)`
+- Mean Flow: `u_t(x) = E[(x_1 - x_0) | x_t]`
+- CFM: `u_t(x) = E[(x_1 - x_0) | x_t, condition]`
+
+## 数值稳定性要求
+
+### 防止数值溢出
+```python
+# ✅ 正确：使用数值稳定的实现
+def safe_norm(x: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    return torch.sqrt(torch.sum(x**2, dim=-1, keepdim=True) + eps)
+
+# ❌ 错误：可能导致梯度消失
+def unsafe_norm(x: torch.Tensor) -> torch.Tensor:
+    return torch.norm(x, dim=-1, keepdim=True)
+```
+
+### 边界条件处理
+- 当 `t → 0` 时的特殊处理
+- 当 `t → 1` 时的数值稳定性
+- 奇点附近的平滑过渡
+
+## 算法特定要求
+
+### RectifiedFlow
+- 实现流线矫正的迭代过程
+- 支持直线化程度的定量评估
+- 提供收敛性分析工具
+
+### OT-Flow
+- 集成Sinkhorn算法求解最优传输
+- 支持不同的成本函数 (L2, Wasserstein等)
+- 实现正则化参数的自适应调整
+
+### Conditional Flow Matching
+- 支持多种条件编码方式
+- 实现条件与路径的解耦
+- 提供条件有效性验证
+
+## 测试验证要求
+
+### 理论验证
+- 边界条件测试：`t=0` 和 `t=1` 时的正确性
+- 插值一致性：轨迹的连续性和可微性
+- 概率守恒：流的体积保持性质
+
+### 数值验证
+- 梯度检查：使用 `torch.autograd.gradcheck`
+- 收敛性测试：不同步长下的数值稳定性
+- 性能基准：与理论复杂度的对比
+
+### 比较验证
+- 与已有实现的结果对比
+- 不同算法变体的一致性检查
+- 极限情况下的退化行为验证

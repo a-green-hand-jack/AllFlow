@@ -1,0 +1,198 @@
+---
+alwaysApply: false
+---
+
+# 文档标准与规范
+
+## Docstring 要求
+
+### Google风格Docstrings
+所有公开的模块、函数、类和方法都必须包含完整的Google风格docstrings：
+
+```python
+def compute_vector_field(self, x_t: torch.Tensor, t: torch.Tensor, condition: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """计算Flow Matching在时间t处的速度场。
+    
+    根据Flow Matching理论，计算给定时间点和位置处的速度场向量。
+    支持条件流匹配，当提供条件信息时使用条件路径。
+    
+    Args:
+        x_t: 当前位置张量, shape: (batch_size, dim)
+        t: 时间参数张量, shape: (batch_size,), 取值范围 [0, 1]
+        condition: 可选的条件信息, shape: (batch_size, condition_dim)
+        
+    Returns:
+        速度场张量, shape: (batch_size, dim)
+        表示在位置x_t和时间t处的流速度方向和大小
+        
+    Raises:
+        ValueError: 当时间参数t不在[0,1]范围内时
+        RuntimeError: 当张量维度不匹配时
+        
+    Note:
+        速度场的计算基于以下公式：
+        u_t(x) = (x_1 - x_0) / (1 - σ_min)
+        其中x_0为源分布采样，x_1为目标分布采样
+        
+    Example:
+        >>> flow = FlowMatching()
+        >>> x_t = torch.randn(32, 128)  # 批量大小32，维度128
+        >>> t = torch.rand(32)          # 随机时间点
+        >>> velocity = flow.compute_vector_field(x_t, t)
+        >>> print(velocity.shape)      # torch.Size([32, 128])
+    """
+```
+
+### 必要的文档元素
+每个docstring必须包含：
+1. **简短摘要**: 一句话描述功能
+2. **详细描述**: 算法背景、数学原理、使用场景
+3. **Args**: 所有参数的类型、形状、取值范围
+4. **Returns**: 返回值的类型、形状、含义
+5. **Raises**: 可能抛出的异常及其条件
+6. **Note**: 重要的数学公式或算法细节
+7. **Example**: 基本使用示例
+
+## 数学公式文档
+
+### 公式表示规范
+在docstring中包含数学公式时，使用LaTeX语法：
+
+```python
+def interpolate_path(self, x_0: torch.Tensor, x_1: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    """计算Flow Matching的插值路径。
+    
+    实现标准的线性插值路径：
+    
+    .. math::
+        x_t = (1-t) \cdot x_0 + t \cdot x_1 + \sigma(t) \cdot \epsilon
+        
+    其中 \sigma(t) 是时间相关的噪声调度函数。
+    """
+```
+
+### 算法描述要求
+- **数学背景**: 简要说明算法的理论基础
+- **参数设置**: 关键超参数的选择原则
+- **数值考虑**: 数值稳定性的特殊处理
+
+## 项目级文档
+
+### README.md 要求
+项目的README.md必须包含：
+
+1. **项目概述**: AllFlow的核心目标和特色
+2. **安装说明**: 依赖安装和环境配置
+3. **快速开始**: 5分钟内的基本使用示例
+4. **算法覆盖**: 支持的所有Flow Matching变体
+5. **API参考**: 核心类和函数的简要说明
+6. **性能特点**: 计算效率和优化特性
+7. **贡献指南**: 代码提交和开发规范
+
+### 模块级文档
+每个Python模块的开头必须包含模块级docstring：
+
+```python
+"""Flow Matching核心算法实现模块。
+
+本模块实现了标准Flow Matching算法的核心计算组件，包括：
+- 速度场计算
+- 轨迹插值
+- 损失函数计算
+
+算法基于Lipman et al. (2022)的Flow Matching理论，
+提供了高效的PyTorch实现，支持批量处理和GPU加速。
+
+Example:
+    基本使用方式：
+    
+    >>> from allflow.algorithms import FlowMatching
+    >>> flow = FlowMatching()
+    >>> x_0 = torch.randn(32, 128)
+    >>> x_1 = torch.randn(32, 128)
+    >>> t = torch.rand(32)
+    >>> velocity = flow.compute_vector_field(x_0, x_1, t)
+
+Note:
+    所有算法实现都避免了Python循环，使用纯张量操作
+    以获得最佳性能。建议在GPU上运行大规模计算。
+"""
+```
+
+## 类和方法文档
+
+### 类级文档
+```python
+class FlowMatching:
+    """Flow Matching算法的核心实现类。
+    
+    Flow Matching是一种用于生成建模的连续正则化流方法，
+    通过学习从简单分布（如高斯分布）到复杂数据分布的流场。
+    
+    Attributes:
+        sigma_min: 最小噪声水平，用于数值稳定性
+        device: 计算设备（CPU或GPU）
+        
+    Note:
+        该实现基于论文 "Flow Matching for Generative Modeling"
+        优化了计算效率，所有操作都支持批量处理。
+    """
+```
+
+### 方法分组文档
+将相关方法进行逻辑分组：
+
+```python
+class FlowMatching:
+    # Core Algorithm Methods
+    def compute_vector_field(self, ...): ...
+    def sample_trajectory(self, ...): ...
+    def compute_loss(self, ...): ...
+    
+    # Utility Methods
+    def validate_inputs(self, ...): ...
+    def to_device(self, ...): ...
+```
+
+## 示例和教程
+
+### Jupyter Notebook规范
+notebooks/目录下的教程必须：
+1. **清晰的标题和目录**
+2. **理论背景介绍**
+3. **逐步的代码示例**
+4. **可视化结果**
+5. **性能分析**
+6. **扩展练习**
+
+### 代码示例要求
+- 所有示例都必须可以直接运行
+- 包含必要的导入语句
+- 提供预期的输出结果
+- 注释解释关键步骤
+
+## 版本和更新日志
+
+### CHANGELOG.md
+维护详细的更新日志：
+```markdown
+# Changelog
+
+## [0.2.0] - 2024-01-15
+### Added
+- RectifiedFlow算法实现
+- GPU内存优化
+- 性能基准测试套件
+
+### Changed
+- 改进了速度场计算的数值稳定性
+- 优化了批量处理性能
+
+### Fixed
+- 修复了边界条件处理的bug
+```
+
+### API版本控制
+- 明确标记公共API的稳定性
+- 废弃功能的迁移指南
+- 向后兼容性保证
