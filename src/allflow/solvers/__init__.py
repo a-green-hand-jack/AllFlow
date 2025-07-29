@@ -4,9 +4,11 @@
 和性能需求的求解方案。
 
 支持的求解器：
-- EulerSolver: 一阶Euler方法，速度最快
-- HeunSolver: 二阶Heun方法，精度与速度平衡
-- AdaptiveSolver: 自适应步长求解器，精度最高
+- ODESolverBase: 抽象基类，定义统一接口
+- TorchDiffEqSolver: torchdiffeq库的高性能包装器
+- EulerSolver: 简单Euler方法的后备实现
+- SolverConfig: 求解器配置参数
+- VectorFieldWrapper: 速度场函数包装器
 
 设计特点：
 - 统一的求解器接口
@@ -17,15 +19,64 @@
 Author: AllFlow Contributors
 """
 
-# 求解器实现类 - 将在实现后导入
-# from .euler import EulerSolver
-# from .heun import HeunSolver
-# from .adaptive import AdaptiveSolver
+# 基础接口导入
+from .base import ODESolverBase, SolverConfig, VectorFieldWrapper
+
+# 条件导入torchdiffeq求解器
+try:
+    from .torchdiffeq_solver import TorchDiffEqSolver, EulerSolver
+    HAS_TORCHDIFFEQ = True
+except ImportError:
+    TorchDiffEqSolver = None
+    EulerSolver = None
+    HAS_TORCHDIFFEQ = False
 
 # 导出的公共API
 __all__ = [
-    # ODE求解器 (将在实现后取消注释)
-    # "EulerSolver",
-    # "HeunSolver", 
-    # "AdaptiveSolver",
-] 
+    # 基础接口
+    "ODESolverBase",
+    "SolverConfig", 
+    "VectorFieldWrapper",
+]
+
+# 条件导出（如果依赖可用）
+if HAS_TORCHDIFFEQ:
+    __all__.extend([
+        "TorchDiffEqSolver",
+        "EulerSolver",
+    ])
+
+# 便捷函数
+def create_solver(solver_type: str = "torchdiffeq", **kwargs) -> ODESolverBase:
+    """创建ODE求解器的便捷函数.
+    
+    Args:
+        solver_type: 求解器类型，'torchdiffeq'或'euler'
+        **kwargs: 传递给求解器的参数
+        
+    Returns:
+        配置好的求解器实例
+        
+    Raises:
+        ImportError: 当请求的求解器不可用时
+        ValueError: 当solver_type不支持时
+    """
+    if solver_type == "torchdiffeq":
+        if not HAS_TORCHDIFFEQ:
+            raise ImportError(
+                "torchdiffeq不可用。请安装: pip install torchdiffeq"
+            )
+        return TorchDiffEqSolver(**kwargs)  # type: ignore
+    
+    elif solver_type == "euler":
+        if not HAS_TORCHDIFFEQ:
+            raise ImportError(
+                "Euler求解器需要torchdiffeq。请安装: pip install torchdiffeq"
+            )
+        return EulerSolver(**kwargs)  # type: ignore
+    
+    else:
+        raise ValueError(f"不支持的求解器类型: {solver_type}")
+
+# 添加便捷函数到导出列表
+__all__.append("create_solver") 

@@ -1,82 +1,241 @@
-"""AllFlow: 高效的Flow Matching算法库
+"""AllFlow - 高效的Flow Matching算法库
 
-AllFlow是一个专注于Flow Matching核心算法的PyTorch库，提供高效、可扩展的
-Flow Matching变体实现。本模块导出了库的公共API，包括所有算法类和工具函数。
+AllFlow是一个专注于Flow Matching核心算法的PyTorch库，提供：
 
-主要特色：
-- 零Python循环，纯张量操作实现
-- 统一的算法接口设计
-- 完整的Flow Matching变体覆盖
-- 高性能GPU优化
+- 纯算法实现，与神经网络架构解耦
+- 极致性能优化，避免Python循环
+- 跨设备兼容性（CPU/CUDA/MPS）
+- 科学严谨的数学实现
 
-Example:
-    基本使用方式：
-    
-    >>> import torch
-    >>> from allflow import FlowMatching
-    >>> 
-    >>> flow = FlowMatching(device='cuda')
-    >>> x_0 = torch.randn(32, 64, device='cuda')
-    >>> x_1 = torch.randn(32, 64, device='cuda')
-    >>> t = torch.rand(32, device='cuda')
-    >>> 
-    >>> velocity = flow.compute_vector_field(x_0, x_1, t)
-    >>> loss = flow.compute_loss(x_0, x_1)
+主要组件:
+- FlowMatching: 标准Flow Matching算法
+- ODESolver: 高精度ODE求解器
+- 工具函数: 验证、设备管理等
+
+快速开始:
+    >>> import allflow
+    >>> flow = allflow.FlowMatching()
+    >>> # 使用flow进行训练和推理
 
 Author: AllFlow Contributors
 License: MIT
+Version: 0.1.0
 """
 
-from typing import Any
+import logging
+from typing import Optional
+
+# 核心算法导入
+from .algorithms.flow_matching import FlowMatching
+from .core.base import FlowMatchingBase, VectorField, PathInterpolation
+
+# ODE求解器导入
+from .solvers.base import ODESolverBase, SolverConfig, VectorFieldWrapper
+
+# 尝试导入torchdiffeq求解器（可选依赖）
+try:
+    from .solvers.torchdiffeq_solver import TorchDiffEqSolver, EulerSolver
+    HAS_TORCHDIFFEQ = True
+except ImportError:
+    TorchDiffEqSolver = None
+    EulerSolver = None
+    HAS_TORCHDIFFEQ = False
 
 # 版本信息
 __version__ = "0.1.0"
 __author__ = "AllFlow Contributors"
+__email__ = "allflow@example.com"
+__license__ = "MIT"
 
-# 核心算法类 - 将在实现后导入
-# from .algorithms import (
-#     FlowMatching,
-#     MeanFlow,
-#     ConditionalFlowMatching,
-#     RectifiedFlow,
-#     OptimalTransportFlow,
-# )
-
-# ODE求解器 - 将在实现后导入
-# from .solvers import (
-#     EulerSolver,
-#     HeunSolver,
-#     AdaptiveSolver,
-# )
-
-# 工具函数 - 将在实现后导入
-# from .utils import (
-#     validate_tensor_shapes,
-#     compute_flow_straightness,
-# )
-
-# 公共API列表 - 定义哪些符号可以被外部导入
+# 公共API导出
 __all__ = [
     # 版本信息
-    "__version__",
-    "__author__",
+    "__version__", "__author__", "__license__",
     
-    # 核心算法类 (将在实现后取消注释)
-    # "FlowMatching",
-    # "MeanFlow", 
-    # "ConditionalFlowMatching",
-    # "RectifiedFlow",
-    # "OptimalTransportFlow",
+    # 核心算法
+    "FlowMatching",
+    "FlowMatchingBase",
+    "VectorField", 
+    "PathInterpolation",
     
-    # ODE求解器 (将在实现后取消注释)
-    # "EulerSolver",
-    # "HeunSolver",
-    # "AdaptiveSolver",
+    # ODE求解器
+    "ODESolverBase",
+    "SolverConfig",
+    "VectorFieldWrapper",
     
-    # 工具函数 (将在实现后取消注释)
-    # "validate_tensor_shapes",
-    # "compute_flow_straightness",
+    # 工具函数
+    "get_device_info",
+    "set_global_seed",
+    "validate_tensor_inputs",
+    
+    # 便捷函数
+    "create_flow_matching",
+    "create_solver",
 ]
+
+# 条件导出（如果依赖可用）
+if HAS_TORCHDIFFEQ:
+    __all__.extend([
+        "TorchDiffEqSolver",
+        "EulerSolver",
+    ])
+
+# 设置日志
+logger = logging.getLogger(__name__)
+
+
+def get_device_info() -> dict:
+    """获取当前设备信息.
+    
+    Returns:
+        包含设备信息的字典
+    """
+    import torch
+    
+    info = {
+        "torch_version": torch.__version__,
+        "cuda_available": torch.cuda.is_available(),
+        "mps_available": hasattr(torch.backends, 'mps') and torch.backends.mps.is_available(),
+        "cpu_count": torch.get_num_threads(),
+    }
+    
+    if torch.cuda.is_available():
+        try:
+            cuda_version = torch.version.cuda  # type: ignore
+        except AttributeError:
+            cuda_version = 'unknown'
+        info.update({
+            "cuda_version": cuda_version,
+            "gpu_count": torch.cuda.device_count(),
+            "current_device": torch.cuda.current_device(),
+        })
+    
+    return info
+
+
+def set_global_seed(seed: int) -> None:
+    """设置全局随机种子.
+    
+    Args:
+        seed: 随机种子值
+    """
+    import torch
+    import random
+    import numpy as np
+    
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    
+    # 确保确定性（可能影响性能）
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
+    logger.info(f"全局随机种子设置为: {seed}")
+
+
+def validate_tensor_inputs(*tensors, allow_empty: bool = False) -> bool:
+    """验证张量输入的有效性.
+    
+    Args:
+        *tensors: 要验证的张量
+        allow_empty: 是否允许空张量
+        
+    Returns:
+        验证是否通过
+        
+    Raises:
+        ValueError: 当张量无效时
+    """
+    import torch
+    
+    if not allow_empty and len(tensors) == 0:
+        raise ValueError("至少需要一个张量进行验证")
+    
+    for i, tensor in enumerate(tensors):
+        if not isinstance(tensor, torch.Tensor):
+            raise ValueError(f"第{i}个输入不是torch.Tensor类型: {type(tensor)}")
+        
+        if torch.isnan(tensor).any():
+            raise ValueError(f"第{i}个张量包含NaN值")
+        
+        if torch.isinf(tensor).any():
+            raise ValueError(f"第{i}个张量包含Inf值")
+    
+    return True
+
+
+def create_flow_matching(
+    device: Optional[str] = None,
+    dtype: Optional[str] = None,
+    **kwargs
+) -> FlowMatching:
+    """创建Flow Matching实例的便捷函数.
+    
+    Args:
+        device: 计算设备，如'cuda'、'mps'或'cpu'
+        dtype: 数据类型，如'float32'
+        **kwargs: 传递给FlowMatching的其他参数
+        
+    Returns:
+        配置好的FlowMatching实例
+        
+    Example:
+        >>> flow = allflow.create_flow_matching(device='cuda')
+        >>> # 开始使用flow进行训练
+    """
+    import torch
+    
+    # 转换dtype字符串为torch类型
+    torch_dtype = None
+    if dtype is not None:
+        if isinstance(dtype, str):
+            torch_dtype = getattr(torch, dtype)
+        else:
+            torch_dtype = dtype
+    
+    return FlowMatching(device=device, dtype=torch_dtype, **kwargs)
+
+
+def create_solver(
+    solver_type: str = "torchdiffeq",
+    method: str = "dopri5",
+    **kwargs
+) -> ODESolverBase:
+    """创建ODE求解器的便捷函数.
+    
+    Args:
+        solver_type: 求解器类型，'torchdiffeq'或'euler'
+        method: 数值方法名称
+        **kwargs: 传递给求解器的其他参数
+        
+    Returns:
+        配置好的ODE求解器实例
+        
+    Raises:
+        ImportError: 当请求的求解器不可用时
+        ValueError: 当solver_type不支持时
+    """
+    if solver_type == "torchdiffeq":
+        if not HAS_TORCHDIFFEQ:
+            raise ImportError(
+                "torchdiffeq不可用。请安装: pip install torchdiffeq"
+            )
+        return TorchDiffEqSolver(method=method, **kwargs)
+    
+    elif solver_type == "euler":
+        if not HAS_TORCHDIFFEQ:
+            raise ImportError(
+                "Euler求解器需要torchdiffeq。请安装: pip install torchdiffeq"
+            )
+        return EulerSolver(**kwargs)
+    
+    else:
+        raise ValueError(f"不支持的求解器类型: {solver_type}")
 
 
 def _check_dependencies() -> None:
