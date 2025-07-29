@@ -1,10 +1,8 @@
 # AllFlow: 高效的Flow Matching算法库
 
-[![PyPI version](https://badge.fury.io/py/allflow.svg)](https://badge.fury.io/py/allflow)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-orange.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![codecov](https://codecov.io/gh/your-username/allflow/branch/main/graph/badge.svg)](https://codecov.io/gh/your-username/allflow)
 
 **AllFlow** 是一个专注于Flow Matching核心算法的PyTorch库，提供高效、可扩展的Flow Matching变体实现。
 

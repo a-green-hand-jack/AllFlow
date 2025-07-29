@@ -80,19 +80,50 @@ __all__ = [
 
 
 def _check_dependencies() -> None:
-    """检查必要的依赖是否已安装."""
+    """检查必要的依赖并推荐最优计算后端."""
     try:
         import torch
-        if not torch.cuda.is_available():
+        
+        # 检查设备可用性并给出建议
+        available_devices = []
+        performance_info = []
+        
+        if torch.cuda.is_available():
+            gpu_count = torch.cuda.device_count()
+            available_devices.append(f"CUDA (GPU: {gpu_count}个)")
+            performance_info.append("✅ CUDA GPU可用，将获得最佳性能")
+        
+        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            available_devices.append("MPS (Apple Silicon)")
+            performance_info.append("✅ Apple Silicon MPS可用，针对M系列芯片优化")
+        
+        available_devices.append("CPU")
+        
+        if len(available_devices) == 1:  # 只有CPU
             import warnings
             warnings.warn(
-                "CUDA不可用，AllFlow将在CPU上运行，性能可能受到影响",
+                "⚠️  只有CPU后端可用，性能可能受限。\n"
+                "建议：\n"
+                "• Linux: 安装CUDA版本的PyTorch\n"
+                "• Mac: 确保使用支持MPS的PyTorch 2.0+",
                 UserWarning
             )
+        else:
+            # 有GPU或MPS加速
+            import logging
+            logging.info(f"🚀 AllFlow已检测到加速计算后端: {', '.join(available_devices)}")
+            for info in performance_info:
+                logging.info(info)
+                
     except ImportError:
         raise ImportError(
-            "AllFlow需要PyTorch>=2.0.0。请使用以下命令安装：\n"
-            "pip install torch>=2.0.0"
+            "AllFlow需要PyTorch>=2.0.0。请根据您的平台安装：\n\n"
+            "📱 Apple Silicon Mac:\n"
+            "   pip install torch>=2.0.0\n\n"
+            "🐧 Linux with CUDA:\n"
+            "   pip install torch>=2.0.0 --index-url https://download.pytorch.org/whl/cu118\n\n"
+            "💻 CPU only:\n"
+            "   pip install torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu"
         )
 
 

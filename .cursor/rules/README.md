@@ -21,26 +21,31 @@
 - **优化策略**: 内存效率、计算效率、GPU优化
 - **代码审查检查点**: 每次开发都需要验证的性能指标
 
+#### 4. `device-compatibility.mdc`
+- **跨平台兼容性**: M4 Mac开发环境与Linux部署环境
+- **设备自动检测**: 智能选择CUDA、MPS或CPU后端
+- **性能优化**: 针对不同设备的特定优化策略
+
 ### 📋 Conditional Apply (按需应用的规则)
 
 这些规则在特定开发阶段或特定文件类型时应用：
 
-#### 4. `algorithm-implementation.mdc`
+#### 5. `algorithm-implementation.mdc`
 - **应用时机**: 实现具体Flow Matching算法时
 - **内容**: 统一接口、数学正确性、数值稳定性要求
 - **验证标准**: 算法特定的测试和验证要求
 
-#### 5. `testing-coverage.mdc`
+#### 6. `testing-coverage.mdc`
 - **应用时机**: 编写测试代码或审查测试覆盖率时
 - **内容**: 测试框架、覆盖率要求、测试类型和组织
 - **工具配置**: pytest配置、CI/CD集成
 
-#### 6. `documentation-standards.mdc`
+#### 7. `documentation-standards.mdc`
 - **应用时机**: 编写文档、README或代码注释时
 - **内容**: Docstring规范、数学公式表示、项目级文档
 - **文档类型**: API文档、教程、版本日志
 
-#### 7. `ref-repo.mdc`
+#### 8. `ref-repo.mdc`
 - **应用时机**: 需要参考项目结构或查阅理论文档时
 - **内容**: ProtRepr项目参考、Flow Matching理论文档
 - **技术栈指引**: 推荐工具和不参考的方面

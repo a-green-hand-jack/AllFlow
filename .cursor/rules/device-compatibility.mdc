@@ -1,0 +1,199 @@
+# 计算设备兼容性要求
+
+## 开发与部署环境
+
+### 开发环境
+- **主要开发设备**: M4 芯片 Mac Air 2025
+- **本地计算后端**: Apple Silicon MPS (Metal Performance Shaders)
+- **特点**: 无CUDA支持，但有高效的MPS加速
+
+### 目标部署环境  
+- **主要部署平台**: Linux系统
+- **计算后端**: CUDA GPU加速
+- **特点**: 支持NVIDIA GPU和CUDA生态系统
+
+## 跨平台兼容性原则
+
+### 🔧 设备自动检测与选择
+所有代码必须实现智能的设备检测逻辑：
+
+```python
+def _get_optimal_device() -> torch.device:
+    """自动选择最优计算设备"""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        return torch.device("mps")  # Apple Silicon
+    else:
+        return torch.device("cpu")
+```
+
+### 📱 设备特定优化
+
+#### MPS (Apple Silicon) 优化
+- **内存管理**: MPS内存模型与CUDA不同，需特殊处理
+- **数据类型**: 某些操作在MPS上可能不支持float16
+- **同步机制**: 使用`torch.mps.synchronize()`而非`torch.cuda.synchronize()`
+
+#### CUDA (Linux) 优化
+- **多GPU支持**: 利用`torch.cuda.device_count()`进行多卡并行
+- **内存池**: 使用CUDA内存池优化大批量计算
+- **混合精度**: 充分利用Tensor Core加速
+
+#### CPU 后备支持
+- **BLAS优化**: 确保OpenMP和MKL正确配置
+- **批量大小**: CPU环境下自动调整为较小批量
+
+## 代码实现要求
+
+### ✅ 强制要求
+
+#### 设备无关的张量操作
+```python
+# ✅ 正确：设备无关的实现
+def compute_vector_field(self, x_0, x_1, t):
+    device = x_0.device
+    # 所有计算都在同一设备上进行
+    result = torch.einsum('bi,bj->bij', x_0, x_1)
+    return result.to(device)
+
+# ❌ 错误：硬编码设备
+def compute_vector_field(self, x_0, x_1, t):
+    result = torch.einsum('bi,bj->bij', x_0.cuda(), x_1.cuda())
+    return result
+```
+
+#### 设备一致性检查
+```python
+def validate_device_consistency(self, *tensors):
+    """确保所有张量在同一设备上"""
+    devices = {t.device for t in tensors if torch.is_tensor(t)}
+    if len(devices) > 1:
+        raise RuntimeError(f"张量分布在多个设备上: {devices}")
+```
+
+#### 自适应批量大小
+```python
+def get_optimal_batch_size(self, device: torch.device) -> int:
+    """根据设备类型返回最优批量大小"""
+    if device.type == "cuda":
+        return 1024  # GPU可以处理大批量
+    elif device.type == "mps":
+        return 512   # MPS中等批量
+    else:
+        return 128   # CPU小批量
+```
+
+### 🚫 严格禁止
+
+#### 硬编码设备类型
+```python
+# ❌ 禁止：硬编码CUDA
+x = torch.randn(10, 10).cuda()
+
+# ❌ 禁止：假设设备类型
+if torch.cuda.is_available():
+    # 只考虑CUDA，忽略MPS
+```
+
+#### 设备特定的同步调用
+```python
+# ❌ 禁止：只处理CUDA同步
+torch.cuda.synchronize()
+
+# ✅ 正确：通用同步函数
+def synchronize_device(device: torch.device):
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    elif device.type == "mps":
+        torch.mps.synchronize()
+    # CPU无需同步
+```
+
+## 测试策略
+
+### 多设备测试矩阵
+所有算法必须在以下环境中通过测试：
+
+| 设备类型 | 开发环境 | 部署环境 | 测试重点 |
+|---------|---------|---------|---------|
+| **MPS** | ✅ M4 Mac | ⚠️ 少见 | 本地开发验证 |
+| **CUDA** | ❌ 不可用 | ✅ Linux | 部署环境验证 |
+| **CPU** | ✅ 后备 | ✅ 后备 | 兼容性保证 |
+
+### 测试标记
+```python
+@pytest.mark.mps
+def test_flow_matching_mps():
+    """MPS设备专用测试"""
+    
+@pytest.mark.cuda  
+def test_flow_matching_cuda():
+    """CUDA设备专用测试"""
+    
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="需要MPS支持")
+def test_apple_silicon_optimization():
+    """Apple Silicon特定优化测试"""
+```
+
+## 性能基准要求
+
+### 跨设备性能对比
+每个算法都必须提供跨设备性能基准：
+
+```python
+def benchmark_across_devices():
+    """在可用设备上运行性能测试"""
+    devices = []
+    if torch.cuda.is_available():
+        devices.append("cuda")
+    if torch.backends.mps.is_available():
+        devices.append("mps")
+    devices.append("cpu")
+    
+    for device in devices:
+        # 运行基准测试
+        benchmark_flow_matching(device)
+```
+
+## 部署优化建议
+
+### Linux部署优化
+- **CUDA版本**: 建议CUDA 11.8+，支持最新PyTorch特性
+- **驱动版本**: NVIDIA驱动版本≥525.60.13
+- **多GPU**: 支持`torch.nn.DataParallel`和`DistributedDataParallel`
+
+### Mac开发优化  
+- **PyTorch版本**: 确保使用支持MPS的PyTorch 2.0+
+- **内存管理**: MPS内存不支持某些CUDA内存操作
+- **调试工具**: 使用`torch.mps.profiler`进行性能分析
+
+## 错误处理
+
+### 设备不兼容的优雅降级
+```python
+try:
+    # 尝试GPU计算
+    result = compute_on_gpu(data)
+except RuntimeError as e:
+    if "out of memory" in str(e).lower():
+        # 降级到CPU或减少批量大小
+        result = compute_with_smaller_batch(data)
+    else:
+        raise
+```
+
+### 设备特定的错误提示
+```python
+def check_device_requirements(device: torch.device):
+    """检查设备特定要求"""
+    if device.type == "mps" and not torch.backends.mps.is_available():
+        raise RuntimeError(
+            "MPS后端不可用。请确保:\n"
+            "1. 使用支持MPS的PyTorch版本 (≥2.0)\n" 
+            "2. 运行在Apple Silicon Mac上\n"
+            "3. macOS版本≥12.3"
+        )
+```
+
+这些规则确保AllFlow库能够在M4 Mac开发环境和Linux生产环境之间无缝切换，同时充分利用各平台的计算优势。
