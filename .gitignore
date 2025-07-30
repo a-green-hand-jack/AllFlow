@@ -186,3 +186,5 @@ wandb/
 .Trashes
 ehthumbs.db
 Thumbs.db 
+**/__pycache__/
+**/.pyc

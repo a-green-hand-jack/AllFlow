@@ -5,16 +5,16 @@ License: MIT
 """
 
 import logging
-from typing import Any, Callable, Optional, Union, Tuple
+from typing import Any, Callable, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 
 from allflow.core.base import FlowMatchingBase
+from allflow.core.interpolation import EuclideanInterpolation, PathInterpolation
+from allflow.core.noise_generators import GaussianNoiseGenerator, NoiseGeneratorBase
 from allflow.core.time_sampling import TimeSamplerBase, UniformTimeSampler
-from allflow.core.interpolation import PathInterpolation, EuclideanInterpolation
-from allflow.core.vector_field import VectorField, EuclideanVectorField
-from allflow.core.noise_generators import NoiseGeneratorBase, GaussianNoiseGenerator
+from allflow.core.vector_field import EuclideanVectorField, VectorField
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +26,14 @@ class FlowMatching(FlowMatchingBase):
     新版本支持插值器、速度场计算器和噪声生成器的灵活配置。
 
     算法核心：
-    1. 路径插值：通过插值器计算 x_t = interpolate(x_0, x_1, t)  
+    1. 路径插值：通过插值器计算 x_t = interpolate(x_0, x_1, t)
     2. 速度场计算：通过速度场计算器计算 u_t(x)
     3. 损失函数：E[||u_θ(x_t, t) - u_t(x)||²]
     4. 智能噪声生成：x_0未提供时自动生成合适的噪声
 
     新特性（2024-07-29重大更新）：
     - **几何空间支持**: 欧几里得空间、SO(3)旋转群等
-    - **灵活插值**: 线性插值、球面插值(SLERP)等  
+    - **灵活插值**: 线性插值、球面插值(SLERP)等
     - **智能噪声**: 根据几何空间自动选择合适的噪声生成器
     - **解耦设计**: 算法逻辑与具体实现完全分离
     - **向后兼容**: 默认配置与原版API完全兼容
@@ -51,18 +51,18 @@ class FlowMatching(FlowMatchingBase):
         >>> # 标准欧几里得空间使用（向后兼容）
         >>> flow = FlowMatching(device='cuda')
         >>> x_t, t, true_velocity = flow.prepare_training_data(x_0, x_1)
-        >>> 
+        >>>
         >>> # SO(3)旋转空间使用
         >>> from allflow.core.interpolation import SO3Interpolation
-        >>> from allflow.core.vector_field import SO3VectorField  
+        >>> from allflow.core.vector_field import SO3VectorField
         >>> from allflow.core.noise_generators import SO3NoiseGenerator
-        >>> 
+        >>>
         >>> flow_so3 = FlowMatching(
         ...     path_interpolation=SO3Interpolation(),
         ...     vector_field=SO3VectorField(),
         ...     noise_generator=SO3NoiseGenerator()
         ... )
-        >>> 
+        >>>
         >>> # 自动噪声生成（x_0可选）
         >>> x_t, t, true_velocity = flow.prepare_training_data(x_1=target_quaternions)
     """
