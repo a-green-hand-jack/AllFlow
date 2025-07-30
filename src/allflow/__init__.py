@@ -11,8 +11,10 @@ AllFlow是一个专注于Flow Matching核心算法的PyTorch库，提供：
 
 主要组件:
 - FlowMatching: 标准Flow Matching算法
+- OptimalTransportFlow: 基于最优传输的Flow Matching算法
 - TimeSampler: 灵活的时间采样器（均匀、正态、指数、重要性）
 - ModelInterface: 统一的模型接口（支持条件模型和额外参数）
+- OptimalTransport: 独立的最优传输计算器（欧几里得和SO3空间）
 - ODESolver: 高精度ODE求解器
 - 工具函数: 验证、设备管理等
 
@@ -20,6 +22,12 @@ AllFlow是一个专注于Flow Matching核心算法的PyTorch库，提供：
     >>> import allflow
     >>> # 基础用法
     >>> flow = allflow.FlowMatching()
+    >>> 
+    >>> # 使用OT-Flow（欧几里得空间）
+    >>> ot_flow = allflow.OptimalTransportFlow(space_type="euclidean")
+    >>> 
+    >>> # 使用OT-Flow（SO3旋转群）
+    >>> ot_flow_so3 = allflow.OptimalTransportFlow(space_type="so3", distance_metric="geodesic")
     >>> 
     >>> # 使用自定义时间采样器
     >>> sampler = allflow.NormalTimeSampler(mean=0.3, std=0.1)
@@ -96,6 +104,20 @@ from .core.noise_generators import (
     create_noise_generator,
 )
 
+# 导入最优传输相关类
+from .core.optimal_transport import (
+    OptimalTransportBase,
+    EuclideanOptimalTransport,
+    SO3OptimalTransport,
+    create_optimal_transport,
+)
+
+# 导入OT-Flow算法
+from .algorithms.ot_flow import (
+    OptimalTransportFlow,
+    create_ot_flow,
+)
+
 # 版本信息
 __version__ = "0.1.0"
 __author__ = "AllFlow Contributors"
@@ -143,6 +165,17 @@ __all__ = [
     "SO3NoiseGenerator",
     "UniformNoiseGenerator",
     "create_noise_generator",
+    
+    # 最优传输 (新增)
+    "OptimalTransportBase",
+    "EuclideanOptimalTransport",
+    "SO3OptimalTransport",
+    "create_optimal_transport",
+    
+    # OT-Flow算法 (新增)
+    "OptimalTransportFlow",
+    "create_ot_flow",
+    
     # ODE求解器
     "ODESolverBase",
     "SolverConfig",
