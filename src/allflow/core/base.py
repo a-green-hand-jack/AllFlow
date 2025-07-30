@@ -162,24 +162,29 @@ class FlowMatchingBase(ABC):
 
     @abstractmethod
     def compute_loss(
-        self, x_0: torch.Tensor, x_1: torch.Tensor, **kwargs: Any
+        self,
+        x_0: torch.Tensor,
+        x_1: torch.Tensor,
+        t: torch.Tensor,
+        predicted_velocity: torch.Tensor,
     ) -> torch.Tensor:
         """计算Flow Matching训练损失.
 
-        计算用于训练神经网络的Flow Matching损失函数。损失函数度量
-        预测的速度场与真实速度场之间的差异。
+        计算预测速度场与真实速度场之间的损失函数。这个方法专注于
+        纯算法逻辑，不涉及具体的神经网络实现。
 
         Args:
             x_0: 源分布采样, shape: (batch_size, *data_shape)
             x_1: 目标分布采样, shape: (batch_size, *data_shape)
-            **kwargs: 损失计算的额外参数
+            t: 时间参数, shape: (batch_size,), 范围 [0, 1]
+            predicted_velocity: 模型预测的速度场, shape: (batch_size, *data_shape)
 
         Returns:
             标量损失值, shape: ()
 
         Note:
-            损失计算通常涉及在随机时间点t采样轨迹，然后计算
-            预测速度场与真实速度场的L2距离。
+            模型调用和预测应该在外部完成，这里只计算损失。
+            这样设计使得Flow Matching算法与具体的神经网络实现解耦。
         """
         raise NotImplementedError("子类必须实现compute_loss方法")
 

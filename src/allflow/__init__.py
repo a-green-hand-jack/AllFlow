@@ -6,16 +6,28 @@ AllFlow是一个专注于Flow Matching核心算法的PyTorch库，提供：
 - 极致性能优化，避免Python循环
 - 跨设备兼容性（CPU/CUDA/MPS）
 - 科学严谨的数学实现
+- 灵活的时间采样策略
+- 统一的模型接口系统
 
 主要组件:
 - FlowMatching: 标准Flow Matching算法
+- TimeSampler: 灵活的时间采样器（均匀、正态、指数、重要性）
+- ModelInterface: 统一的模型接口（支持条件模型和额外参数）
 - ODESolver: 高精度ODE求解器
 - 工具函数: 验证、设备管理等
 
 快速开始:
     >>> import allflow
+    >>> # 基础用法
     >>> flow = allflow.FlowMatching()
-    >>> # 使用flow进行训练和推理
+    >>> 
+    >>> # 使用自定义时间采样器
+    >>> sampler = allflow.NormalTimeSampler(mean=0.3, std=0.1)
+    >>> flow = allflow.FlowMatching(time_sampler=sampler)
+    >>> 
+    >>> # 使用条件模型
+    >>> model_wrapper = allflow.ConditionalModelWrapper(model, condition=labels)
+    >>> loss = flow.compute_loss(x_0, x_1, model=model_wrapper)
 
 Author: AllFlow Contributors
 License: MIT
@@ -28,6 +40,26 @@ from typing import Optional
 # 核心算法导入
 from .algorithms.flow_matching import FlowMatching
 from .core.base import FlowMatchingBase, VectorField, PathInterpolation
+
+# 时间采样器导入
+from .core.time_sampling import (
+    TimeSamplerBase,
+    UniformTimeSampler,
+    NormalTimeSampler,
+    ExponentialTimeSampler,
+    ImportanceTimeSampler,
+    create_time_sampler,
+)
+
+# 模型接口导入
+from .core.model_interface import (
+    ModelInterface,
+    SimpleModelWrapper,
+    ConditionalModelWrapper,
+    FlexibleModelWrapper,
+    FunctionModelWrapper,
+    create_model_wrapper,
+)
 
 # ODE求解器导入
 from .solvers.base import ODESolverBase, SolverConfig, VectorFieldWrapper
@@ -57,6 +89,22 @@ __all__ = [
     "FlowMatchingBase",
     "VectorField", 
     "PathInterpolation",
+    
+    # 时间采样器
+    "TimeSamplerBase",
+    "UniformTimeSampler",
+    "NormalTimeSampler",
+    "ExponentialTimeSampler",
+    "ImportanceTimeSampler",
+    "create_time_sampler",
+    
+    # 模型接口
+    "ModelInterface",
+    "SimpleModelWrapper",
+    "ConditionalModelWrapper",
+    "FlexibleModelWrapper",
+    "FunctionModelWrapper",
+    "create_model_wrapper",
     
     # ODE求解器
     "ODESolverBase",
@@ -225,14 +273,14 @@ def create_solver(
             raise ImportError(
                 "torchdiffeq不可用。请安装: pip install torchdiffeq"
             )
-        return TorchDiffEqSolver(method=method, **kwargs)
+        return TorchDiffEqSolver(method=method, **kwargs)  # type: ignore
     
     elif solver_type == "euler":
         if not HAS_TORCHDIFFEQ:
             raise ImportError(
                 "Euler求解器需要torchdiffeq。请安装: pip install torchdiffeq"
             )
-        return EulerSolver(**kwargs)
+        return EulerSolver(**kwargs)  # type: ignore
     
     else:
         raise ValueError(f"不支持的求解器类型: {solver_type}")

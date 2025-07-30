@@ -11,6 +11,7 @@
 - 性能基准测试
 
 Author: AllFlow Test Suite Contributors
+uv run pytest tests/test_flow_matching.py -v --cov-report=html
 """
 
 import logging
@@ -137,28 +138,94 @@ class TestFlowMatchingCore:
         """测试损失函数计算."""
         x_0, x_1, t = sample_data
 
-        # 创建一个简单的模型用于测试
-        def mock_model(x_t, t):
-            # 返回正确的速度场用于测试
-            return x_1 - x_0
+        # 使用便利方法准备训练数据
+        x_t, t_sampled, true_velocity = flow_matching.prepare_training_data(x_0, x_1)
 
-        # 计算损失
-        loss = flow_matching.compute_loss(x_0, x_1, model=mock_model)
+        # 测试完美预测（预测的速度场等于真实速度场）
+        perfect_predicted_velocity = true_velocity.clone()
+        loss_perfect = flow_matching.compute_loss(
+            x_0, x_1, t_sampled, perfect_predicted_velocity
+        )
 
         # 检查损失形状和值
-        assert loss.dim() == 0  # 标量
-        assert loss >= 0  # 损失应该非负
-        assert torch.isfinite(loss)  # 损失应该是有限值
+        assert loss_perfect.dim() == 0  # 标量
+        assert loss_perfect >= 0  # 损失应该非负
+        assert torch.isfinite(loss_perfect)  # 损失应该是有限值
+        assert loss_perfect < 1e-6  # 完美预测的损失应该接近0
 
-        # 对于完美模型，损失应该接近0
-        assert loss < 1e-5
+        # 测试错误的预测
+        bad_predicted_velocity = torch.zeros_like(true_velocity)
+        loss_bad = flow_matching.compute_loss(
+            x_0, x_1, t_sampled, bad_predicted_velocity
+        )
+        assert loss_bad > loss_perfect  # 错误预测的损失应该更大
 
-        # 测试错误的模型
-        def bad_model(x_t, t):
-            return torch.zeros_like(x_t)
+        # 测试另一种错误预测
+        random_predicted_velocity = torch.randn_like(true_velocity)
+        loss_random = flow_matching.compute_loss(
+            x_0, x_1, t_sampled, random_predicted_velocity
+        )
+        assert loss_random > loss_perfect  # 随机预测的损失应该更大
 
-        bad_loss = flow_matching.compute_loss(x_0, x_1, model=bad_model)
-        assert bad_loss > loss  # 错误模型的损失应该更大
+        # 测试使用提供的时间参数
+        batch_size = x_0.shape[0]  # 获取实际批量大小
+        custom_t = torch.tensor([0.0, 0.5, 1.0, 0.25][:batch_size], device=x_0.device)
+        if custom_t.shape[0] < batch_size:
+            # 如果不够，重复到正确的大小
+            custom_t = custom_t.repeat(batch_size // custom_t.shape[0] + 1)[:batch_size]
+
+        x_t_custom = flow_matching.sample_trajectory(x_0, x_1, custom_t)
+        true_velocity_custom = flow_matching.compute_vector_field(
+            x_t_custom, custom_t, x_0=x_0, x_1=x_1
+        )
+
+        loss_custom = flow_matching.compute_loss(
+            x_0, x_1, custom_t, true_velocity_custom
+        )
+        assert loss_custom < 1e-6  # 使用真实速度场的损失应该接近0
+
+    def test_prepare_training_data(self, flow_matching, sample_data):
+        """测试prepare_training_data便利方法."""
+        x_0, x_1, t = sample_data
+        batch_size = x_0.shape[0]
+
+        # 测试默认批量大小
+        x_t, t_sampled, true_velocity = flow_matching.prepare_training_data(x_0, x_1)
+
+        # 检查返回值的形状
+        assert x_t.shape == x_0.shape
+        assert t_sampled.shape == (batch_size,)
+        assert true_velocity.shape == x_0.shape
+
+        # 检查时间参数在有效范围内
+        assert torch.all(t_sampled >= 0)
+        assert torch.all(t_sampled <= 1)
+
+        # 检查设备一致性
+        assert x_t.device == x_0.device
+        assert t_sampled.device == x_0.device
+        assert true_velocity.device == x_0.device
+
+        # 测试指定批量大小 - 使用与输入数据相同的批量大小
+        current_batch_size = x_0.shape[0]
+        x_t_custom, t_custom, velocity_custom = flow_matching.prepare_training_data(
+            x_0, x_1, batch_size=current_batch_size
+        )
+        assert t_custom.shape == (current_batch_size,)
+
+        # 测试与手动计算的一致性
+        # 手动重现prepare_training_data的逻辑
+        t_manual = flow_matching.time_sampler.sample(batch_size)
+        x_t_manual = flow_matching.sample_trajectory(x_0, x_1, t_manual)
+        velocity_manual = flow_matching.compute_vector_field(
+            x_t_manual, t_manual, x_0=x_0, x_1=x_1
+        )
+
+        # 虽然时间采样是随机的，但计算逻辑应该一致
+        # 我们验证返回值的数学性质而不是具体值
+        assert torch.isfinite(x_t).all()
+        assert torch.isfinite(t_sampled).all()
+        assert torch.isfinite(true_velocity).all()
 
     def test_input_validation(self, flow_matching, device):
         """测试输入验证功能."""
@@ -290,30 +357,61 @@ class TestFlowMatchingCore:
         batch_size = 4
         dim = 8
 
-        # 创建简单的测试模型
-        def test_model(x, t):
-            # 简单的线性模型
+        # 创建简单的速度场函数
+        def zero_velocity_field(x, t):
+            """零速度场 - 粒子不移动"""
             return torch.zeros_like(x)
+
+        def constant_velocity_field(x, t):
+            """常数速度场 - 粒子匀速移动"""
+            return torch.ones_like(x) * 0.1
 
         x_0 = torch.randn(batch_size, dim, device=device)
 
-        # 测试Euler积分
-        x_final_euler = flow_matching.generate_sample(
-            x_0, test_model, num_steps=10, method="euler"
+        # 测试零速度场（粒子应该保持不变）
+        x_final_zero = flow_matching.generate_sample(
+            x_0, zero_velocity_field, num_steps=10, method="euler"
         )
-        assert x_final_euler.shape == x_0.shape
-        assert torch.isfinite(x_final_euler).all()
+        assert x_final_zero.shape == x_0.shape
+        assert torch.isfinite(x_final_zero).all()
+        assert torch.allclose(x_final_zero, x_0, atol=1e-6)  # 零速度场下粒子不应移动
+
+        # 测试常数速度场
+        x_final_const = flow_matching.generate_sample(
+            x_0, constant_velocity_field, num_steps=10, method="euler"
+        )
+        assert x_final_const.shape == x_0.shape
+        assert torch.isfinite(x_final_const).all()
+        # 常数速度场下，粒子应该移动
+        assert not torch.allclose(x_final_const, x_0, atol=1e-3)
 
         # 测试Heun积分
         x_final_heun = flow_matching.generate_sample(
-            x_0, test_model, num_steps=10, method="heun"
+            x_0, constant_velocity_field, num_steps=10, method="heun"
         )
         assert x_final_heun.shape == x_0.shape
         assert torch.isfinite(x_final_heun).all()
 
         # 测试不支持的方法
-        with pytest.raises(ValueError):
-            flow_matching.generate_sample(x_0, test_model, method="unsupported")
+        with pytest.raises(ValueError, match="不支持的积分方法"):
+            flow_matching.generate_sample(
+                x_0, zero_velocity_field, method="unsupported"
+            )
+
+        # 测试理想情况：从噪声生成目标分布
+        # 这个测试验证了真实的Flow Matching用例
+        x_target = torch.ones_like(x_0)  # 目标分布
+
+        def ideal_velocity_field(x, t):
+            """理想速度场：Flow Matching的线性路径速度场"""
+            # 对于线性路径 x_t = (1-t)*x_0 + t*x_target，速度场是 dx/dt = x_target - x_0
+            return x_target - x_0
+
+        x_generated = flow_matching.generate_sample(
+            x_0, ideal_velocity_field, num_steps=100, method="euler"
+        )
+        # 应该接近目标分布（允许更大的误差因为这是数值积分）
+        assert torch.allclose(x_generated, x_target, atol=5e-2)
 
 
 @pytest.mark.benchmark

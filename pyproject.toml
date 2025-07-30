@@ -39,6 +39,7 @@ dependencies = [
     "torch>=2.0.0",
     "torchdiffeq>=0.2.0",
     "typing-extensions>=4.5.0",
+    "torchvision>=0.15.0",
 ]
 
 [project.optional-dependencies]
@@ -57,6 +58,7 @@ test = [
     "pytest-cov>=4.0.0", 
     "pytest-benchmark>=4.0.0",
     "hypothesis>=6.0.0",
+    "torchvision>=0.15.0",  # Required for MNIST test data loader
 ]
 docs = [
     "sphinx>=6.0.0",
