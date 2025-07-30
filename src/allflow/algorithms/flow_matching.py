@@ -1,40 +1,20 @@
-"""基础Flow Matching算法实现
-
-本模块实现标准的Flow Matching算法，这是所有Flow Matching变体的基础。
-基于Lipman et al. (2023)的"Flow Matching for Generative Modeling"论文。
-
-核心功能：
-- 实现标准的线性插值路径
-- 计算Flow Matching速度场 u_t(x) = (x_1 - x_0) / (1 - σ_min)
-- 提供训练损失计算
-- 支持批量处理和GPU加速
-
-数学基础：
-给定源分布p_0(x)和目标分布p_1(x)，Flow Matching学习一个速度场u_t(x)，
-使得遵循ODE dx/dt = u_t(x)的轨迹能够将p_0变换为p_1。
-
-性能特点：
-- 零Python循环，纯张量操作实现
-- 数值稳定的边界条件处理
-- 支持混合精度训练
-- 内存优化的梯度计算
+"""Flow Matching算法实现
 
 Author: AllFlow Contributors
 License: MIT
-
-Reference:
-    Lipman, Y., et al. (2023). Flow Matching for Generative Modeling.
-    arXiv preprint arXiv:2210.02747.
 """
 
 import logging
-from typing import Any, Callable, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union, Tuple
 
 import torch
 import torch.nn.functional as F
 
 from allflow.core.base import FlowMatchingBase
 from allflow.core.time_sampling import TimeSamplerBase, UniformTimeSampler
+from allflow.core.interpolation import PathInterpolation, EuclideanInterpolation
+from allflow.core.vector_field import VectorField, EuclideanVectorField
+from allflow.core.noise_generators import NoiseGeneratorBase, GaussianNoiseGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -42,45 +22,49 @@ logger = logging.getLogger(__name__)
 class FlowMatching(FlowMatchingBase):
     """标准Flow Matching算法实现.
 
-    实现基础的Flow Matching算法，包括线性插值路径和标准速度场计算。
-    这是所有其他Flow Matching变体的基础实现。
+    实现基础的Flow Matching算法，支持多种几何空间的插值和速度场计算。
+    新版本支持插值器、速度场计算器和噪声生成器的灵活配置。
 
     算法核心：
-    1. 线性插值路径：x_t = (1-t)*x_0 + t*x_1
-    2. 速度场计算：u_t(x) = (x_1 - x_0)
+    1. 路径插值：通过插值器计算 x_t = interpolate(x_0, x_1, t)  
+    2. 速度场计算：通过速度场计算器计算 u_t(x)
     3. 损失函数：E[||u_θ(x_t, t) - u_t(x)||²]
+    4. 智能噪声生成：x_0未提供时自动生成合适的噪声
 
-    新特性（2024-07-29改进）：
-    - 灵活的时间采样策略：支持均匀、正态、指数、重要性采样
-    - 统一的模型接口：支持条件模型和额外参数
-    - 简化的API：移除了不必要的多时间步参数
+    新特性（2024-07-29重大更新）：
+    - **几何空间支持**: 欧几里得空间、SO(3)旋转群等
+    - **灵活插值**: 线性插值、球面插值(SLERP)等  
+    - **智能噪声**: 根据几何空间自动选择合适的噪声生成器
+    - **解耦设计**: 算法逻辑与具体实现完全分离
+    - **向后兼容**: 默认配置与原版API完全兼容
 
     Args:
         device: 计算设备，默认自动检测
         dtype: 数据类型，默认float32
         sigma_min: 最小噪声水平，用于数值稳定性
         time_sampler: 时间采样器，默认使用均匀分布
+        path_interpolation: 路径插值器，默认使用欧几里得线性插值
+        vector_field: 速度场计算器，默认使用欧几里得速度场
+        noise_generator: 噪声生成器，默认使用高斯噪声
 
     Example:
-        >>> # 基础用法
+        >>> # 标准欧几里得空间使用（向后兼容）
         >>> flow = FlowMatching(device='cuda')
-        >>> x_0 = torch.randn(32, 128, device='cuda')
-        >>> x_1 = torch.randn(32, 128, device='cuda')
-        >>> loss = flow.compute_loss(x_0, x_1, model=my_velocity_model)
-
-        >>> # 使用自定义时间采样器
-        >>> from allflow.core.time_sampling import NormalTimeSampler
-        >>> sampler = NormalTimeSampler(mean=0.3, std=0.1)
-        >>> flow = FlowMatching(time_sampler=sampler)
-
-        >>> # 使用条件模型
-        >>> from allflow.core.model_interface import ConditionalModelWrapper
-        >>> model_wrapper = ConditionalModelWrapper(model, condition=class_labels)
-        >>> loss = flow.compute_loss(x_0, x_1, model=model_wrapper)
-
-    Note:
-        所有操作都使用批量化的PyTorch张量操作，避免了Python循环，
-        确保最佳的计算性能和GPU利用率。支持灵活的模型输入和时间采样策略。
+        >>> x_t, t, true_velocity = flow.prepare_training_data(x_0, x_1)
+        >>> 
+        >>> # SO(3)旋转空间使用
+        >>> from allflow.core.interpolation import SO3Interpolation
+        >>> from allflow.core.vector_field import SO3VectorField  
+        >>> from allflow.core.noise_generators import SO3NoiseGenerator
+        >>> 
+        >>> flow_so3 = FlowMatching(
+        ...     path_interpolation=SO3Interpolation(),
+        ...     vector_field=SO3VectorField(),
+        ...     noise_generator=SO3NoiseGenerator()
+        ... )
+        >>> 
+        >>> # 自动噪声生成（x_0可选）
+        >>> x_t, t, true_velocity = flow.prepare_training_data(x_1=target_quaternions)
     """
 
     def __init__(
@@ -89,6 +73,9 @@ class FlowMatching(FlowMatchingBase):
         dtype: Optional[torch.dtype] = None,
         sigma_min: float = 1e-5,
         time_sampler: Optional[TimeSamplerBase] = None,
+        path_interpolation: Optional[PathInterpolation] = None,
+        vector_field: Optional[VectorField] = None,
+        noise_generator: Optional[NoiseGeneratorBase] = None,
     ) -> None:
         """初始化Flow Matching算法.
 
@@ -97,6 +84,9 @@ class FlowMatching(FlowMatchingBase):
             dtype: 张量数据类型，默认为torch.float32
             sigma_min: 最小噪声水平，防止数值不稳定
             time_sampler: 时间采样器，默认使用均匀分布采样
+            path_interpolation: 路径插值器，默认使用欧几里得线性插值
+            vector_field: 速度场计算器，默认使用欧几里得速度场
+            noise_generator: 噪声生成器，默认使用高斯噪声
         """
         super().__init__(device=device, dtype=dtype, sigma_min=sigma_min)
 
@@ -105,11 +95,34 @@ class FlowMatching(FlowMatchingBase):
             self.time_sampler = UniformTimeSampler(device=self.device, dtype=self.dtype)
         else:
             self.time_sampler = time_sampler
-            # 确保采样器使用正确的设备和数据类型
             self.time_sampler.device = self.device
             self.time_sampler.dtype = self.dtype
 
-        logger.info(f"标准Flow Matching算法初始化完成，时间采样器: {self.time_sampler}")
+        # 设置路径插值器
+        if path_interpolation is None:
+            self.path_interpolation = EuclideanInterpolation()
+        else:
+            self.path_interpolation = path_interpolation
+
+        # 设置速度场计算器
+        if vector_field is None:
+            self.vector_field = EuclideanVectorField()
+        else:
+            self.vector_field = vector_field
+
+        # 设置噪声生成器
+        if noise_generator is None:
+            self.noise_generator = GaussianNoiseGenerator()
+        else:
+            self.noise_generator = noise_generator
+
+        logger.info(
+            f"Flow Matching算法初始化完成: "
+            f"插值器={type(self.path_interpolation).__name__}, "
+            f"速度场={type(self.vector_field).__name__}, "
+            f"噪声生成器={type(self.noise_generator).__name__}, "
+            f"时间采样器={type(self.time_sampler).__name__}"
+        )
 
     def compute_vector_field(
         self,
@@ -121,8 +134,8 @@ class FlowMatching(FlowMatchingBase):
     ) -> torch.Tensor:
         """计算Flow Matching速度场.
 
-        实现标准的Flow Matching速度场计算。对于Flow Matching，
-        速度场就是目标点与源点的差值：u_t(x) = x_1 - x_0
+        使用配置的速度场计算器计算在当前位置和时间的速度场值。
+        不同的几何空间使用不同的速度场计算方法。
 
         Args:
             x_t: 当前位置张量, shape: (batch_size, *data_shape)
@@ -132,14 +145,10 @@ class FlowMatching(FlowMatchingBase):
             **kwargs: 额外参数（保留用于子类扩展）
 
         Returns:
-            速度场张量, shape: (batch_size, *data_shape)
+            速度场张量, shape: (batch_size, *data_shape) 或 (batch_size, tangent_dim)
 
         Raises:
             ValueError: 当x_0或x_1为None时，或输入形状不匹配时
-
-        Note:
-            Flow Matching的速度场不依赖于当前位置x_t，只依赖于源点和目标点。
-            这使得Flow Matching相比其他方法更加简单和高效。
         """
         if x_0 is None or x_1 is None:
             raise ValueError("Flow Matching需要提供x_0和x_1来计算速度场")
@@ -152,25 +161,23 @@ class FlowMatching(FlowMatchingBase):
         if isinstance(device_result, tuple):
             x_0, x_1, x_t, t = device_result
         else:
-            # 这种情况不应该发生，因为我们传入了多个张量
             raise RuntimeError("to_device应该返回多个张量的元组")
 
-        # Flow Matching的速度场：u_t(x) = x_1 - x_0
-        # 这是一个常数向量场，不依赖于时间t或当前位置x_t
-        velocity = x_1 - x_0
+        # 设置速度场计算器的端点
+        self.vector_field.set_endpoints(x_0, x_1)
 
-        # 验证输出形状
-        self.validate_vector_field_output(velocity, x_t.shape)
+        # 计算速度场
+        velocity = self.vector_field(x_t, t)
 
         return velocity
 
     def sample_trajectory(
         self, x_0: torch.Tensor, x_1: torch.Tensor, t: torch.Tensor, **kwargs: Any
     ) -> torch.Tensor:
-        """采样线性插值轨迹.
+        """采样插值轨迹.
 
-        实现标准的线性插值路径：x_t = (1-t)*x_0 + t*x_1
-        这是Flow Matching中最基础和最重要的操作。
+        使用配置的路径插值器计算从源点到目标点的插值轨迹。
+        不同的几何空间使用不同的插值方法。
 
         Args:
             x_0: 源点, shape: (batch_size, *data_shape)
@@ -180,12 +187,6 @@ class FlowMatching(FlowMatchingBase):
 
         Returns:
             插值轨迹点, shape: (batch_size, *data_shape)
-
-        Note:
-            线性插值确保：
-            - 当t=0时，返回x_0（源分布）
-            - 当t=1时，返回x_1（目标分布）
-            - 轨迹是从x_0到x_1的直线
         """
         # 验证输入
         self.validate_inputs(x_0, x_1, t)
@@ -195,56 +196,62 @@ class FlowMatching(FlowMatchingBase):
         if isinstance(device_result, tuple):
             x_0, x_1, t = device_result
         else:
-            # 这种情况不应该发生，因为我们传入了多个张量
             raise RuntimeError("to_device应该返回多个张量的元组")
 
-        # 将时间参数扩展到正确的形状以支持广播
-        # t: (batch_size,) -> (batch_size, 1, 1, ...) 匹配x_0的维度
-        t_expanded = t.view(-1, *([1] * (x_0.dim() - 1)))
-
-        # 线性插值：x_t = (1-t)*x_0 + t*x_1
-        # 使用torch.lerp实现数值稳定的插值
-        x_t = torch.lerp(x_0, x_1, t_expanded)
+        # 使用配置的插值器
+        x_t = self.path_interpolation.interpolate(x_0, x_1, t)
 
         return x_t
 
     def prepare_training_data(
         self,
-        x_0: torch.Tensor,
         x_1: torch.Tensor,
+        x_0: Optional[torch.Tensor] = None,
         batch_size: Optional[int] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """为训练准备数据：采样时间并计算轨迹点.
 
-        这是一个便利方法，帮助用户准备compute_loss所需的数据。
-        它使用内置的时间采样器采样时间点，并计算相应的轨迹点。
+        这是一个便利方法，支持智能噪声生成。当x_0未提供时，
+        会自动使用配置的噪声生成器生成合适的源分布噪声。
 
         Args:
-            x_0: 源分布采样, shape: (batch_size, *data_shape)
-            x_1: 目标分布采样, shape: (batch_size, *data_shape)
-            batch_size: 批量大小，如果为None则使用x_0的批量大小
+            x_1: 目标分布采样, shape: (batch_size, *data_shape) [必需]
+            x_0: 源分布采样, shape: (batch_size, *data_shape) [可选]
+            batch_size: 批量大小，如果为None则使用x_1的批量大小
 
         Returns:
             Tuple包含:
             - x_t: 轨迹点, shape: (batch_size, *data_shape)
             - t: 采样的时间点, shape: (batch_size,)
-            - true_velocity: 真实速度场, shape: (batch_size, *data_shape)
+            - true_velocity: 真实速度场, shape: (batch_size, *data_shape或tangent_dim)
 
         Note:
-            这个方法简化了训练循环的实现，用户可以：
-            1. 调用此方法获取x_t, t, true_velocity
-            2. 使用x_t和t调用模型获取predicted_velocity
-            3. 调用compute_loss(x_0, x_1, t, predicted_velocity)
+            新特性：x_0参数现在可选！
+            - 如果提供x_0：使用传统Flow Matching
+            - 如果不提供x_0：自动使用噪声生成器创建源分布
         """
         if batch_size is None:
-            batch_size = x_0.shape[0]
+            batch_size = x_1.shape[0]
 
-        # 确保张量在正确的设备上
-        device_result = self.to_device(x_0, x_1)
-        if isinstance(device_result, tuple):
-            x_0, x_1 = device_result
+        # 确保x_1在正确的设备上
+        x_1_result = self.to_device(x_1)
+        if isinstance(x_1_result, tuple):
+            x_1 = x_1_result[0]
         else:
-            raise RuntimeError("to_device应该返回两个张量的元组")
+            x_1 = x_1_result
+
+        # 智能噪声生成：如果x_0未提供，自动生成
+        if x_0 is None:
+            logger.debug("x_0未提供，使用噪声生成器自动生成源分布")
+            x_0 = self.noise_generator.sample_like(x_1)
+            logger.debug(f"生成的x_0形状: {x_0.shape}, 设备: {x_0.device}")
+        else:
+            # 确保提供的x_0在正确设备上
+            x_0_result = self.to_device(x_0)
+            if isinstance(x_0_result, tuple):
+                x_0 = x_0_result[0]
+            else:
+                x_0 = x_0_result
 
         # 使用时间采样器采样时间点
         t = self.time_sampler.sample(batch_size)
@@ -259,29 +266,33 @@ class FlowMatching(FlowMatchingBase):
 
     def compute_loss(
         self,
-        x_0: torch.Tensor,
         x_1: torch.Tensor,
-        t: torch.Tensor,
         predicted_velocity: torch.Tensor,
+        t: torch.Tensor,
+        x_0: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """计算Flow Matching训练损失.
 
         计算预测速度场与真实速度场之间的L2损失函数。
-        损失函数为：L = ||predicted_velocity - true_velocity||²
+        支持智能噪声生成，x_0参数现在可选。
 
         Args:
-            x_0: 源分布采样, shape: (batch_size, *data_shape)
-            x_1: 目标分布采样, shape: (batch_size, *data_shape)
+            x_1: 目标分布采样, shape: (batch_size, *data_shape) [必需]
+            predicted_velocity: 模型预测的速度场, shape: (batch_size, *data_shape或tangent_dim)
             t: 时间参数, shape: (batch_size,), 范围 [0, 1]
-            predicted_velocity: 模型预测的速度场, shape: (batch_size, *data_shape)
+            x_0: 源分布采样, shape: (batch_size, *data_shape) [可选]
 
         Returns:
             标量损失值, shape: ()
 
         Note:
-            这个方法现在专注于纯算法逻辑，不涉及具体的神经网络实现。
+            这个方法现在专注于纯算法逻辑，支持智能噪声生成。
             模型调用和预测应该在外部完成，这里只计算损失。
         """
+        # 智能噪声生成：如果x_0未提供，自动生成
+        if x_0 is None:
+            x_0 = self.noise_generator.sample_like(x_1)
+
         # 验证输入
         self.validate_inputs(x_0, x_1, t)
 
@@ -299,7 +310,11 @@ class FlowMatching(FlowMatchingBase):
         true_velocity = self.compute_vector_field(x_t, t, x_0=x_0, x_1=x_1)
 
         # 验证预测输出的形状
-        self.validate_vector_field_output(predicted_velocity, x_t.shape)
+        if predicted_velocity.shape != true_velocity.shape:
+            raise ValueError(
+                f"预测速度场形状 {predicted_velocity.shape} "
+                f"与真实速度场形状 {true_velocity.shape} 不匹配"
+            )
 
         # 计算L2损失
         loss = F.mse_loss(predicted_velocity, true_velocity, reduction="mean")

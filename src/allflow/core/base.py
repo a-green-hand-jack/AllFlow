@@ -163,28 +163,24 @@ class FlowMatchingBase(ABC):
     @abstractmethod
     def compute_loss(
         self,
-        x_0: torch.Tensor,
         x_1: torch.Tensor,
-        t: torch.Tensor,
         predicted_velocity: torch.Tensor,
+        t: torch.Tensor,
+        x_0: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """计算Flow Matching训练损失.
-
-        计算预测速度场与真实速度场之间的损失函数。这个方法专注于
-        纯算法逻辑，不涉及具体的神经网络实现。
+        """计算Flow Matching损失.
 
         Args:
-            x_0: 源分布采样, shape: (batch_size, *data_shape)
             x_1: 目标分布采样, shape: (batch_size, *data_shape)
-            t: 时间参数, shape: (batch_size,), 范围 [0, 1]
             predicted_velocity: 模型预测的速度场, shape: (batch_size, *data_shape)
+            t: 时间参数, shape: (batch_size,), 范围 [0, 1]
+            x_0: 源分布采样, shape: (batch_size, *data_shape), 可选
 
         Returns:
             标量损失值, shape: ()
 
         Note:
-            模型调用和预测应该在外部完成，这里只计算损失。
-            这样设计使得Flow Matching算法与具体的神经网络实现解耦。
+            子类必须实现此方法。新版本支持x_0可选，用于智能噪声生成。
         """
         raise NotImplementedError("子类必须实现compute_loss方法")
 
@@ -260,45 +256,55 @@ class FlowMatchingBase(ABC):
 
 
 class VectorField(ABC):
-    """速度场的抽象表示.
-
-    封装Flow Matching中的速度场概念，提供统一的接口来计算
-    不同位置和时间处的流速度。
+    """速度场计算的抽象基类.
+    
+    定义不同几何空间中速度场计算的统一接口。
+    不同的几何空间（如欧几里得空间、SO(3)等）需要不同的速度场计算方法。
     """
-
+    
     @abstractmethod
     def __call__(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        """计算指定位置和时间的速度场值.
-
+        """计算给定位置和时间的速度场.
+        
         Args:
-            x: 位置张量, shape: (batch_size, *data_shape)
-            t: 时间张量, shape: (batch_size,)
-
+            x: 当前位置张量
+            t: 时间张量
+            
         Returns:
-            速度场值, shape: (batch_size, *data_shape)
+            速度场张量
+        """
+        raise NotImplementedError
+    
+    @abstractmethod
+    def set_endpoints(self, x_0: torch.Tensor, x_1: torch.Tensor) -> None:
+        """设置速度场计算的端点.
+        
+        Args:
+            x_0: 源点张量
+            x_1: 目标点张量
         """
         raise NotImplementedError
 
 
 class PathInterpolation(ABC):
-    """路径插值的抽象接口.
-
-    定义从源分布到目标分布的插值路径。不同的Flow Matching
-    变体可能使用不同的插值策略。
+    """路径插值的抽象基类.
+    
+    定义不同几何空间中路径插值的统一接口。
+    欧几里得空间使用线性插值，SO(3)空间使用球面插值等。
     """
-
+    
     @abstractmethod
     def interpolate(
         self, x_0: torch.Tensor, x_1: torch.Tensor, t: torch.Tensor
     ) -> torch.Tensor:
-        """执行路径插值.
-
+        """在两点间进行插值.
+        
         Args:
-            x_0: 源点, shape: (batch_size, *data_shape)
-            x_1: 目标点, shape: (batch_size, *data_shape)
-            t: 插值参数, shape: (batch_size,), 范围 [0, 1]
-
+            x_0: 起始点张量
+            x_1: 结束点张量  
+            t: 插值参数张量，范围[0,1]
+            
         Returns:
-            插值结果, shape: (batch_size, *data_shape)
+            插值结果张量
         """
         raise NotImplementedError

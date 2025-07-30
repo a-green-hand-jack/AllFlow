@@ -73,6 +73,29 @@ except ImportError:
     EulerSolver = None
     HAS_TORCHDIFFEQ = False
 
+# 导入插值器相关类
+from .core.interpolation import (
+    EuclideanInterpolation,
+    SO3Interpolation,
+    create_interpolation,
+)
+
+# 导入速度场相关类
+from .core.vector_field import (
+    EuclideanVectorField,
+    SO3VectorField,
+    create_vector_field,
+)
+
+# 导入噪声生成器相关类
+from .core.noise_generators import (
+    NoiseGeneratorBase,
+    GaussianNoiseGenerator,
+    SO3NoiseGenerator,
+    UniformNoiseGenerator,
+    create_noise_generator,
+)
+
 # 版本信息
 __version__ = "0.1.0"
 __author__ = "AllFlow Contributors"
@@ -106,6 +129,20 @@ __all__ = [
     "FunctionModelWrapper",
     "create_model_wrapper",
     
+    # 路径插值 (新增)
+    "EuclideanInterpolation",
+    "SO3Interpolation",
+    "create_interpolation",
+    # 速度场计算 (新增)
+    "EuclideanVectorField",
+    "SO3VectorField",
+    "create_vector_field",
+    # 噪声生成器 (新增)
+    "NoiseGeneratorBase",
+    "GaussianNoiseGenerator",
+    "SO3NoiseGenerator",
+    "UniformNoiseGenerator",
+    "create_noise_generator",
     # ODE求解器
     "ODESolverBase",
     "SolverConfig",
