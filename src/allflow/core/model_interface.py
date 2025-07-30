@@ -322,10 +322,12 @@ def create_model_wrapper(
         "function": FunctionModelWrapper,
     }
 
-    if wrapper_type not in wrappers:
+    # 大小写不敏感
+    wrapper_type_lower = wrapper_type.lower()
+    if wrapper_type_lower not in wrappers:
         raise ValueError(
             f"不支持的包装器类型: {wrapper_type}，支持的类型: {list(wrappers.keys())}"
         )
 
-    wrapper_class = wrappers[wrapper_type]
+    wrapper_class = wrappers[wrapper_type_lower]
     return wrapper_class(model, **wrapper_kwargs)

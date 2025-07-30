@@ -187,10 +187,10 @@ class TestSO3Interpolation:
         interp = SO3Interpolation()
         
         q1 = torch.tensor([[1.0, 0.0, 0.0, 0.0], [0.5, 0.5, 0.5, 0.5]])
-        q2 = torch.tensor([[1.0, 0.0, 0.0, 0.0], [-0.5, 0.5, 0.5, 0.5]])
+        q2 = torch.tensor([[1.0, 0.0, 0.0, 0.0], [0.5, -0.5, -0.5, -0.5]])
         
         dot = interp.quaternion_dot(q1, q2)
-        expected = torch.tensor([1.0, 0.0])  # 第一个完全相同，第二个正交
+        expected = torch.tensor([1.0, -0.5])  # 第一个完全相同，第二个点积为-0.5
         
         assert torch.allclose(dot, expected, atol=1e-6)
 
