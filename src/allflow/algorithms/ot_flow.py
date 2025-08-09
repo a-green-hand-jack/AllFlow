@@ -21,13 +21,12 @@ from typing import Any, Optional, Tuple, Union
 
 import torch
 
-from .flow_matching import FlowMatching
 from ..core.optimal_transport import (
-    OptimalTransportBase,
     EuclideanOptimalTransport,
+    OptimalTransportBase,
     SO3OptimalTransport,
-    create_optimal_transport,
 )
+from .flow_matching import FlowMatching
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +70,7 @@ class OptimalTransportFlow(FlowMatching):
         super().__init__(**kwargs)
 
         self.space_type = space_type.lower()
-        
+
         # 创建或使用最优传输计算器
         if optimal_transport is not None:
             self.optimal_transport = optimal_transport
@@ -94,7 +93,9 @@ class OptimalTransportFlow(FlowMatching):
                     dtype=self.dtype,
                 )
             else:
-                raise ValueError(f"不支持的空间类型: {space_type}，支持: ['euclidean', 'so3']")
+                raise ValueError(
+                    f"不支持的空间类型: {space_type}，支持: ['euclidean', 'so3']"
+                )
 
         logger.info(
             f"OT-Flow初始化: 空间={self.space_type}, "
@@ -120,8 +121,6 @@ class OptimalTransportFlow(FlowMatching):
         """
         return self.optimal_transport.compute_transport_plan(x_0, x_1, return_cost)
 
-
-
     def reorder_by_transport_plan(
         self, x_0: torch.Tensor, x_1: torch.Tensor, transport_plan: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -137,7 +136,9 @@ class OptimalTransportFlow(FlowMatching):
         Returns:
             重新排序的 (x_0_reordered, x_1_reordered)
         """
-        return self.optimal_transport.reorder_by_transport_plan(x_0, x_1, transport_plan)
+        return self.optimal_transport.reorder_by_transport_plan(
+            x_0, x_1, transport_plan
+        )
 
     def prepare_training_data(
         self,
@@ -182,8 +183,10 @@ class OptimalTransportFlow(FlowMatching):
         # 🎯 核心OT-Flow操作：最优传输重排序
         if use_ot_reordering and batch_size >= 2:
             # 计算最优传输计划（不返回成本）
-            transport_plan = self.compute_optimal_transport_plan(x_0, x_1, return_cost=False)
-            
+            transport_plan = self.compute_optimal_transport_plan(
+                x_0, x_1, return_cost=False
+            )
+
             # 确保transport_plan是张量而不是元组
             if isinstance(transport_plan, tuple):
                 transport_plan = transport_plan[0]
@@ -266,7 +269,7 @@ def create_ot_flow(
     ot_method: str = "sinkhorn",
     distance_metric: str = "geodesic",
     reg_param: float = 0.1,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> OptimalTransportFlow:
     """创建OT-Flow的便捷函数.
 
@@ -285,5 +288,5 @@ def create_ot_flow(
         ot_method=ot_method,
         distance_metric=distance_metric,
         reg_param=reg_param,
-        **kwargs
+        **kwargs,
     )

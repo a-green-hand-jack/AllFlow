@@ -32,7 +32,7 @@ def simple_model_example():
     print("=" * 50)
 
     # 1. 创建Flow Matching实例
-    flow = FlowMatching()
+    flow = FlowMatching(device="cpu")
     print(f"✅ Flow Matching创建成功，设备: {flow.device}")
 
     # 2. 创建测试数据
@@ -74,7 +74,7 @@ def training_example():
     print("=" * 50)
 
     # 1. 创建Flow Matching和简单神经网络
-    flow = FlowMatching()
+    flow = FlowMatching(device="cpu")
 
     # 简单的多层感知机作为速度场预测器
     class SimpleVelocityModel(nn.Module):
@@ -125,7 +125,9 @@ def training_example():
 
         # 前向传播
         optimizer.zero_grad()
-        loss = flow.compute_loss(x_0, x_1, model=model)
+        x_t, t, true_velocity = flow.prepare_training_data(x_0, x_1)
+        predicted_velocity = model(x_t, t)
+        loss = flow.compute_loss(x_0, x_1, t, predicted_velocity)
 
         # 反向传播
         loss.backward()
@@ -166,7 +168,7 @@ def visualization_example():
 
     try:
         # 创建2D Flow Matching
-        flow = FlowMatching()
+        flow = FlowMatching(device="cpu")
 
         # 生成2D数据
         num_points = 500
